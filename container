@@ -14,6 +14,9 @@ ROOT=os.path.expanduser("~/Containers")
 FUNCTION=arguments[0]
 NAME=arguments[1]
 
+DEFAULT_BASE="void"
+BASE=f"{DEFAULT_BASE}"
+
 UNIONOPTS=f"diff=RW"
 def Shell(command,block=True):
 	if block:
@@ -24,7 +27,7 @@ def Shell(command,block=True):
 		
 
 def getContainerProcesses(container):
-	return list(map(int,Shell(f"lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
+	return list(map(int,Shell(f"sudo lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
 	
 def Down(command):
 	Shell(f"trap {command} EXIT;")
@@ -33,24 +36,34 @@ def Down(command):
 def Loop(command,delay):
 	Shell(f'(while true; do "{command}"; sleep {delay}; done) &')
 
+def Base(base):
+    global BASE
+    BASE=f"{base}"        
+    for dir in ["dev","proc","sys","run"]:
+        if not os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
+            Shell(f"sudo mount --bind /{dir} {ROOT}/{BASE}/diff/{dir}")
+
 def Mount(IN,OUT):
 	PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
 	arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
-	if arrIN[0]=='base':
-		print(Shell(f"sudo mount --bind {arrIN[1]} diff{OUT}"))
+	if arrIN[0]=="root":
+	   Shell(f"sudo mount --bind {arrIN[1]} diff{OUT}")
 	else:
-		Shell(f"sudo mount --bind {ROOT}/{arrIN[0]}{arrIN[1]} diff{OUT}")
+	   print(Shell(f"sudo mount --bind {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}"))
 
-def Layer(layer):
+def InstallPackages():
+    Shell("mkdir diff/var")
+    Mount(f"{BASE}:/var","/var")
+def Layer(layer,mode="RO"):
 	global UNIONOPTS
-	UNIONOPTS+=f":{ROOT}/{layer}/diff=RO"
+	UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
 	
 def Run(command):
 	global UNIONOPTS
-	if not UNIONOPTS.endswith(":/=RO"):
-		UNIONOPTS+=":/=RO"
+	if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
+		UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
 		Shell(f"sudo unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
-	Shell(f"""sudo chroot merged su system -c "{command}" """,block=False)
+	Shell(f"""sudo chroot merged bash -c "{command}" """,block=False)
 
 def Wait():
 	Run("sleep infinity")
@@ -60,6 +73,7 @@ def status(container):
 		return "Started"
 	else:
 		return "Stopped"
+		
 def start(container):
 	os.chdir(f"{ROOT}/{container}")
 	if status(container)=="Started":
@@ -67,15 +81,20 @@ def start(container):
 	with open("diff/Containerfile") as f:
 		code = compile(f.read(), 'diff/Containerfile', 'exec')
 		exec(code,globals(),locals())
-		
+	Wait()
 def stop(container):
 	os.chdir(f"{ROOT}/{container}")
 	if status(container)=="Stopped":
 		return f"Container {container} is already stopped"
 	for pid in getContainerProcesses(container):
-		os.kill(pid,signal.SIGTERM)
+		Shell("sudo kill {pid}")
 	Shell("sudo umount -l merged")
+	
+	for dir in Shell(f"mount | | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
+	     Shell(f"sudo umount -l {dir}")
 
+def chroot(container):
+    os.system(f"sudo chroot {ROOT}/{container}/merged")
 result=globals()[FUNCTION](NAME)
 if result is None:
 	print(end='')
