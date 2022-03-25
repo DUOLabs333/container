@@ -23,7 +23,7 @@ def Shell(command,block=True):
 		process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
 		return process.communicate()[0]
 	else:
-		process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
+		process = subprocess.Popen(command, shell=True,universal_newlines=True)
 		
 
 def getContainerProcesses(container):
@@ -49,11 +49,12 @@ def Mount(IN,OUT):
 	if arrIN[0]=="root":
 	   Shell(f"sudo mount --bind {arrIN[1]} diff{OUT}")
 	else:
-	   print(Shell(f"sudo mount --bind {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}"))
+	   Shell(f"sudo mount --bind {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
 
 def InstallPackages():
     Shell("mkdir diff/var")
-    Mount(f"{BASE}:/var","/var")
+    if not os.path.ismount("diff/var"):
+        Mount(f"{BASE}:/var","/var")
 def Layer(layer,mode="RO"):
 	global UNIONOPTS
 	UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
@@ -63,7 +64,7 @@ def Run(command):
 	if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
 		UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
 		Shell(f"sudo unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
-	Shell(f"""sudo chroot merged bash -c "{command}" """,block=False)
+	Shell(f""" sudo chroot merged bash -c "{command}" """,block=False)
 
 def Wait():
 	Run("sleep infinity")
@@ -78,7 +79,7 @@ def start(container):
 	os.chdir(f"{ROOT}/{container}")
 	if status(container)=="Started":
 		return f"Container {container} is already started"
-	with open("diff/Containerfile") as f:
+	with open("Containerfile") as f:
 		code = compile(f.read(), 'diff/Containerfile', 'exec')
 		exec(code,globals(),locals())
 	Wait()
@@ -87,10 +88,10 @@ def stop(container):
 	if status(container)=="Stopped":
 		return f"Container {container} is already stopped"
 	for pid in getContainerProcesses(container):
-		Shell("sudo kill {pid}")
+		Shell(f"sudo kill -9 {pid}")
 	Shell("sudo umount -l merged")
 	
-	for dir in Shell(f"mount | | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
+	for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
 	     Shell(f"sudo umount -l {dir}")
 
 def chroot(container):
