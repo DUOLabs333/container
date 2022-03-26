@@ -6,7 +6,7 @@ import re
 import sys
 import os
 import signal
-import fcntl
+import typing
 
 arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
@@ -23,7 +23,7 @@ def Shell(command,block=True):
 		process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
 		return process.communicate()[0]
 	else:
-		process = subprocess.Popen(command, shell=True,universal_newlines=True)
+		process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
 		
 
 def getContainerProcesses(container):
@@ -64,7 +64,7 @@ def Run(command):
 	if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
 		UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
 		Shell(f"sudo unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
-	Shell(f""" sudo chroot merged bash -c "{command}" """,block=False)
+	Shell(f""" sudo nohup chroot merged bash -c "{command}" > container.log 2>&1""",block=False)
 
 def Wait():
 	Run("sleep infinity")
@@ -93,11 +93,30 @@ def stop(container):
 	
 	for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
 	     Shell(f"sudo umount -l {dir}")
+	try:
+	   os.remove("container.log")
+	except:
+	    pass
 
+def flatten(items):
+    """Yield items from any nested iterable; see Reference."""
+    for x in items:
+        if isinstance(x, typing.Iterable) and not isinstance(x, (str, bytes)):
+            for sub_x in flatten(x):
+                yield sub_x
+        else:
+            yield x
+    
+def restart(container):
+    return [stop(container),start(container)]
+    
 def chroot(container):
     os.system(f"sudo chroot {ROOT}/{container}/merged")
-result=globals()[FUNCTION](NAME)
-if result is None:
-	print(end='')
-else:
-	print(result)
+result=list(flatten([globals()[FUNCTION](NAME)]))
+
+
+for element in result:
+    if element is None:
+        print(end='')
+    else:
+        print(element)
