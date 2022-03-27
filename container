@@ -7,6 +7,7 @@ import sys
 import os
 import signal
 import typing
+import tempfile
 
 arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
@@ -20,8 +21,8 @@ elif len(arguments)==2:
 else:
     NAME="--all"
 
-DEFAULT_BASE="void"
-BASE=f"{DEFAULT_BASE}"
+
+BASE="alpine"
 
 UNIONOPTS=f"diff=RW"
 def Shell(command,block=True):
@@ -34,14 +35,14 @@ def Shell(command,block=True):
 
 def getContainerProcesses(container):
     if os.path.isdir(f"{ROOT}/{container}/merged"):
-       return list(map(int,Shell(f"sudo lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
+       return list(map(int,Shell(f"lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
     
 def Down(command):
     Shell(f"trap {command} EXIT;")
 
 
 def Loop(command,delay):
-    Shell(f'(while true; do "{command}"; sleep {delay}; done) &')
+    Shell(f'(while true; do "{command}"; sleep {delay}; done)')
 
 def Base(base):
     global BASE
@@ -66,18 +67,20 @@ def Layer(layer,mode="RO"):
     global UNIONOPTS
     UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
     
-def Run(command):
+def Run(command=""):
     global UNIONOPTS
+    container=os.path.basename(os.path.normpath(os.getcwd()))
+    Base(BASE)
     if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
         UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
-        Shell(f"sudo unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
-    Shell(f""" sudo nohup chroot merged bash -c "{command}" > container.log 2>&1""",block=False)
+        Shell(f"unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
+    Shell(f""" PATH=$PATH:/bin:/sbin sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=False)
 
 def Wait():
     Run("sleep infinity")
 
 def _status(container):
-    if getContainerProcesses(container):
+    if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
         return "Started"
     else:
         return "Stopped"
@@ -86,6 +89,7 @@ def _start(container):
     os.chdir(f"{ROOT}/{container}")
     if _status(container)=="Started":
         return f"Container {container} is already started"
+    
     with open("Containerfile") as f:
         code = compile(f.read(), 'diff/Containerfile', 'exec')
         exec(code,globals(),locals())
@@ -95,13 +99,13 @@ def _stop(container):
     if _status(container)=="Stopped":
         return f"Container {container} is already stopped"
     for pid in getContainerProcesses(container):
-        Shell(f"sudo kill -9 {pid}")
+        Shell(f"kill -9 {pid}")
     Shell("sudo umount -l merged")
     
     for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
          Shell(f"sudo umount -l {dir}")
     try:
-       os.remove("container.log")
+       os.remove(f"{tempfile.gettempdir()}/container_{container}.log")
     except:
         pass
 
@@ -115,19 +119,25 @@ def flatten(items):
             yield x
     
 def _restart(container):
-    return [stop(container),start(container)]
+    return [_stop(container),_start(container)]
     
 def _chroot(container):
-    os.system(f"sudo chroot {ROOT}/{container}/merged")
+    os.system(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
 
+def _freeze(dummy):
+	os.system(f"{os.path.realpath(__file__)} stop")
+	for dir in ["dev","proc","sys","run"]:
+		if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
+			Shell(f"sudo umount {ROOT}/{BASE}/diff/{dir}")
+	exit()
 def _list(container):
     if type(container).__name__=="list":
        return container
     elif container.startswith("--"):
        if container=="--started":
-           return [_ for _ in _list("--all") if getContainerProcesses(_) ]
+           return [_ for _ in _list("--all") if "Started" in _status(_) ]
        elif container=="--stopped":
-           return [_ for _ in _list("--all") if not getContainerProcesses(_) ]
+           return [_ for _ in _list("--all") if "Stopped" in _status(_) ]
        elif container=="--all":
            return os.listdir(f"{ROOT}")
     else:
