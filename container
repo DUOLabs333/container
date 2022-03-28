@@ -17,6 +17,8 @@ ROOT=os.path.expanduser("~/Containers")
 BASE="alpine"
 
 UNIONOPTS=f"diff=RW"
+
+PATH="$PATH:/bin:/sbin"
 def Shell(command,block=True):
     if block:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
@@ -46,10 +48,15 @@ def Base(base):
 def Mount(IN,OUT):
     PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
     arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
-    if arrIN[0]=="root":
-       Shell(f"bindfs {arrIN[1]} diff{OUT}")
-    else:
-       Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
+    
+    os.makedirs(f"diff{OUT}",exist_ok=True)
+    if not os.path.ismount(f"diff{OUT}"):
+        if arrIN[0]=="root":
+           Shell(f"bindfs {arrIN[1]} diff{OUT}")
+        elif len(arrIN)==1:
+            Shell(f"bindfs {arrIN[0]} diff{OUT}")
+        else:
+           Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
 
 def InstallPackages():
     Shell("mkdir diff/var")
@@ -85,11 +92,11 @@ def _start(container):
         code = compile(f.read(), 'diff/Containerfile', 'exec')
         exec(code,globals(),locals())
     if "--and-chroot" in flags:
-    	_chroot(container)
+        _chroot(container)
     elif "--only-chroot" in flags:
-    	_chroot(container)
-    	_stop(container)
-    	
+        _chroot(container)
+        _stop(container)
+        
 def _stop(container):
     os.chdir(f"{ROOT}/{container}")
     if _status(container)=="Stopped":
@@ -109,16 +116,21 @@ def _restart(container):
     return [_stop(container),_start(container)]
     
 def _chroot(container):
+    global flags
+    if flags==[] and ("Stopped" in _status(container)):
+        flags=['--only-chroot']
+        _start(container)
+        return
     os.system(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
 
 def _freeze(dummy):
-	os.system(f"{os.path.realpath(__file__)} stop")
-	for dir in ["dev","proc","sys","run"]:
-		if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-			Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
-	exit()
-	
-	
+    os.system(f"{os.path.realpath(__file__)} stop")
+    for dir in ["dev","proc","sys","run"]:
+        if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
+            Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
+    exit()
+    
+    
 def _list(container):
     if type(container).__name__=="list":
        return container
@@ -133,12 +145,16 @@ def _list(container):
         return [container]
 
 def _init(container):
-	os.makedirs(f"{ROOT}/{container}",exist_ok=True)
-	os.chdir(f"{ROOT}/{container}")
-	os.makedirs("diff",exist_ok=True)
-	os.makedirs("merged",exist_ok=True)
-	with open(f"Containerfile",'a'):
-		pass
+    os.makedirs(f"{ROOT}/{container}",exist_ok=True)
+    os.chdir(f"{ROOT}/{container}")
+    os.makedirs("diff",exist_ok=True)
+    os.makedirs("merged",exist_ok=True)
+    with open(f"Containerfile",'a'):
+        pass
+    _edit(container)
+
+def _edit(container):
+    os.system(f"$EDITOR {ROOT}/{container}/Containerfile")
 
 
 def flatten(items):
@@ -154,29 +170,29 @@ def flatten(items):
 flags=[]
 local_functions=[name for (name, thing) in locals().items() if callable(thing)]
 for i in range(len(arguments)):
-	if f"_{arguments[i]}" in local_functions:
-		if i==0:
-			break
-		else:
-			flags=arguments[:i]
-			arguments=arguments[i:]
-			break
+    if f"_{arguments[i]}" in local_functions:
+        if i==0:
+            break
+        else:
+            flags=arguments[:i]
+            arguments=arguments[i:]
+            break
 
 FUNCTION=arguments[0]
 if len(arguments)>2:
-	NAME=arguments[1:]
+    NAME=arguments[1:]
 elif len(arguments)==2:
-	NAME=arguments[1]
+    NAME=arguments[1]
 else:
-	NAME="--all"
+    NAME="--all"
 
         
 NAME=_list(NAME)
 for name in NAME:
     if not os.path.isdir(f"{ROOT}/{name}"):
-    	if FUNCTION!="init":
-	        print(f"Container {name} does not exist")
-	        exit()
+        if FUNCTION!="init":
+            print(f"Container {name} does not exist")
+            exit()
     result=list(flatten([globals()[f"_{FUNCTION}"](name)]))
     for element in result:
         if element is None:
