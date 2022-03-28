@@ -18,8 +18,12 @@ BASE="alpine"
 UNIONOPTS=f"diff=RW"
 def Shell(command,block=True):
     if block:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
-        return process.communicate()[0]
+        #process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
+        #return process.communicate()[0]
+        try:
+        	return os.system(command).read()
+        except:
+        	pass
     else:
         process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
         
@@ -113,7 +117,7 @@ def _restart(container):
     return [_stop(container),_start(container)]
     
 def _chroot(container):
-    os.system(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
+    Shell(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
 
 def _freeze(dummy):
 	os.system(f"{os.path.realpath(__file__)} stop")
@@ -135,6 +139,18 @@ def _list(container):
            return os.listdir(f"{ROOT}")
     else:
         return [container]
+
+def _init(container):
+	for dir in os.listdir(f"{ROOT}/{BASE}/diff"):
+		if dir not in ['dev','proc', 'run', 'sys']:
+			Shell(f"""cd {ROOT}/{BASE}/diff/{dir}; find -type d -links 2 -exec mkdir -p "{ROOT}/{container}/diff/{dir}/{{}}" \;""")
+		
+	for dir in ['dev','proc', 'run', 'sys']:
+		Shell(f"mkdir -p {ROOT}/{container}/diff/{dir}")
+	
+	if "--install-packages" in flags:
+		Shell(f"cp -rf {ROOT}/{BASE}/diff/lib/apk {ROOT}/{container}/diff/lib")
+
 
 def flatten(items):
     """Yield items from any nested iterable; see Reference."""
