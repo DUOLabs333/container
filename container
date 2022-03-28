@@ -8,6 +8,7 @@ import os
 import signal
 import typing
 import tempfile
+import shutil
 
 arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
@@ -61,8 +62,6 @@ def InstallPackages():
 def Layer(layer,mode="RO"):
     global UNIONOPTS
     UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
-    
-    #os.system(f"{os.path.realpath(__file__)} start {layer}")
     
     
 def Run(command=""):
@@ -146,10 +145,10 @@ def _init(container):
 			Shell(f"""cd {ROOT}/{BASE}/diff/{dir}; find -type d -links 2 -exec mkdir -p "{ROOT}/{container}/diff/{dir}/{{}}" \;""")
 		
 	for dir in ['dev','proc', 'run', 'sys']:
-		Shell(f"mkdir -p {ROOT}/{container}/diff/{dir}")
+		os.makedirs(f"{ROOT}/{container}/diff/{dir}",exist_ok=True)
 	
 	if "--install-packages" in flags:
-		Shell(f"cp -rf {ROOT}/{BASE}/diff/lib/apk {ROOT}/{container}/diff/lib")
+		shutil.copytree(f"{ROOT}/{BASE}/diff/lib/apk",f"{ROOT}/{container}/diff/lib/apk",dirs_exist_ok=True)
 
 
 def flatten(items):
