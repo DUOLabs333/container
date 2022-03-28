@@ -19,12 +19,8 @@ BASE="alpine"
 UNIONOPTS=f"diff=RW"
 def Shell(command,block=True):
     if block:
-        #process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
-        #return process.communicate()[0]
-        try:
-        	return os.system(command).read()
-        except:
-        	pass
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
+        return process.communicate()[0]
     else:
         process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
         
@@ -70,7 +66,7 @@ def Run(command=""):
     Base(BASE)
     if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
         UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
-        Shell(f"sudo unionfs -o allow_other,suid,dev {UNIONOPTS} merged")
+        Shell(f"sudo unionfs -o allow_other,suid,dev,cow {UNIONOPTS} merged")
     Shell(f""" PATH=$PATH:/bin:/sbin sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=False)
 
 def Wait():
@@ -116,7 +112,7 @@ def _restart(container):
     return [_stop(container),_start(container)]
     
 def _chroot(container):
-    Shell(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
+    os.system(f"PATH=$PATH:/bin:/sbin sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
 
 def _freeze(dummy):
 	os.system(f"{os.path.realpath(__file__)} stop")
@@ -140,6 +136,9 @@ def _list(container):
         return [container]
 
 def _init(container):
+	if "--no-install-packages" in flags:
+		os.rmdir(f"{ROOT}/{container}/diff/lib/apk")
+		return
 	for dir in os.listdir(f"{ROOT}/{BASE}/diff"):
 		if dir not in ['dev','proc', 'run', 'sys']:
 			Shell(f"""cd {ROOT}/{BASE}/diff/{dir}; find -type d -links 2 -exec mkdir -p "{ROOT}/{container}/diff/{dir}/{{}}" \;""")
