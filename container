@@ -41,15 +41,15 @@ def Base(base):
     BASE=f"{base}"        
     for dir in ["dev","proc","sys","run"]:
         if not os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-            Shell(f"sudo mount --bind /{dir} {ROOT}/{BASE}/diff/{dir}")
+            Shell(f"bindfs /{dir} {ROOT}/{BASE}/diff/{dir}")
 
 def Mount(IN,OUT):
     PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
     arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
     if arrIN[0]=="root":
-       Shell(f"sudo mount --bind {arrIN[1]} diff{OUT}")
+       Shell(f"bindfs {arrIN[1]} diff{OUT}")
     else:
-       Shell(f"sudo mount --bind {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
+       Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
 
 def InstallPackages():
     Shell("mkdir diff/var")
@@ -66,11 +66,9 @@ def Run(command=""):
     Base(BASE)
     if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
         UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
-        Shell(f"sudo unionfs -o allow_other,suid,dev,cow {UNIONOPTS} merged")
+        Shell(f"sudo unionfs -o allow_other,suid,cow,dev,hide_meta_files {UNIONOPTS} merged")
     Shell(f""" PATH=$PATH:/bin:/sbin sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=False)
 
-def Wait():
-    Run("sleep infinity")
 
 def _status(container):
     if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
@@ -86,7 +84,6 @@ def _start(container):
     with open("Containerfile") as f:
         code = compile(f.read(), 'diff/Containerfile', 'exec')
         exec(code,globals(),locals())
-    Wait()
     if "--and-chroot" in flags:
     	_chroot(container)
     elif "--only-chroot" in flags:
@@ -102,7 +99,7 @@ def _stop(container):
     Shell("sudo umount -l merged")
     
     for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
-         Shell(f"sudo umount -l {dir}")
+         Shell(f"umount -l {dir}")
     try:
        os.remove(f"{tempfile.gettempdir()}/container_{container}.log")
     except:
@@ -118,7 +115,7 @@ def _freeze(dummy):
 	os.system(f"{os.path.realpath(__file__)} stop")
 	for dir in ["dev","proc","sys","run"]:
 		if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-			Shell(f"sudo umount {ROOT}/{BASE}/diff/{dir}")
+			Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
 	exit()
 	
 	
@@ -136,18 +133,12 @@ def _list(container):
         return [container]
 
 def _init(container):
-	if "--no-install-packages" in flags:
-		os.rmdir(f"{ROOT}/{container}/diff/lib/apk")
-		return
-	for dir in os.listdir(f"{ROOT}/{BASE}/diff"):
-		if dir not in ['dev','proc', 'run', 'sys']:
-			Shell(f"""cd {ROOT}/{BASE}/diff/{dir}; find -type d -links 2 -exec mkdir -p "{ROOT}/{container}/diff/{dir}/{{}}" \;""")
-		
-	for dir in ['dev','proc', 'run', 'sys']:
-		os.makedirs(f"{ROOT}/{container}/diff/{dir}",exist_ok=True)
-	
-	if "--install-packages" in flags:
-		shutil.copytree(f"{ROOT}/{BASE}/diff/lib/apk",f"{ROOT}/{container}/diff/lib/apk",dirs_exist_ok=True)
+	os.makedirs(f"{ROOT}/{container}",exist_ok=True)
+	os.chdir(f"{ROOT}/{container}")
+	os.makedirs("diff",exist_ok=True)
+	os.makedirs("merged",exist_ok=True)
+	with open(f"Containerfile",'a'):
+		pass
 
 
 def flatten(items):
@@ -183,8 +174,9 @@ else:
 NAME=_list(NAME)
 for name in NAME:
     if not os.path.isdir(f"{ROOT}/{name}"):
-        print(f"Container {name} does not exist")
-        exit()
+    	if FUNCTION!="init":
+	        print(f"Container {name} does not exist")
+	        exit()
     result=list(flatten([globals()[f"_{FUNCTION}"](name)]))
     for element in result:
         if element is None:
