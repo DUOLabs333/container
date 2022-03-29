@@ -39,7 +39,7 @@ def _status(container):
     else:
         return "Stopped"
 
-def _list(Names):
+def List(Names):
     names=Names
     AllContainers=os.listdir(f"{ROOT}")
     
@@ -70,7 +70,7 @@ def print_result(result):
 
 #If doing list, then you don't need to loop over all elements
 if FUNCTION=="list":
-    print_result(_list(NAME))
+    print_result(List(NAME))
     exit()
 
 
@@ -78,7 +78,7 @@ NAME=_list(NAME)
 for name in _list(NAME):
     PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"
     
-    BASE="alpine"
+    BASE="void"
     UNIONOPTS="diff=RW"
     
     if not os.path.isdir(f"{ROOT}/{name}"):
@@ -136,8 +136,8 @@ for name in _list(NAME):
         Base(BASE)
         if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
             UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
-            Shell(f"sudo unionfs -o allow_other,suid,cow,dev,hide_meta_files {UNIONOPTS} merged")
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
+            Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {UNIONOPTS} merged")
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
     
     
             
@@ -158,6 +158,7 @@ for name in _list(NAME):
     def _build(container):
         global Run
         os.chdir(f"{ROOT}/{container}")
+        _stop(container)
         
         #Redefine Run for build=True
         Run=functools.partial(Run,build=True)
@@ -171,6 +172,7 @@ for name in _list(NAME):
         if _status(container)=="Stopped":
             return f"Container {container} is already stopped"
         for pid in getContainerProcesses(container):
+            #Replace with os.kill
             Shell(f"kill -9 {pid}")
         Shell("sudo umount -l merged")
         
@@ -190,10 +192,10 @@ for name in _list(NAME):
             flags+=['--only-chroot']
             _start(container)
             return
-        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
+        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged bash")
     
     def _freeze(dummy):
-        os.system(f"{os.path.realpath(__file__)} stop")
+        os.system(f"{os.path.realpath(__file__)} stop > /dev/null")
         for dir in ["dev","proc","sys","run"]:
             if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
                 Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
@@ -201,17 +203,7 @@ for name in _list(NAME):
         
         
     def _list(container):
-        if type(container).__name__=="list":
-           return container
-        elif container.startswith("--"):
-           if container=="--started":
-               return [_ for _ in _list("--all") if "Started" in _status(_) ]
-           elif container=="--stopped":
-               return [_ for _ in _list("--all") if "Stopped" in _status(_) ]
-           elif container=="--all":
-               return os.listdir(f"{ROOT}")
-        else:
-            return [container]
+        return [container]
     
     def _init(container):
         os.makedirs(f"{ROOT}/{container}",exist_ok=True)
