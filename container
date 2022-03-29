@@ -9,165 +9,42 @@ import signal
 import typing
 import tempfile
 import shutil
-
+import functools
+import inspect
+import sys
 arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
 
+#Support for flags
+flags=[]
+for i in range(len(arguments)):
+    if arguments[i].startswith("--"):
+        flags=arguments[i:]
+        arguments=arguments[:i]
+        break
 
-PATH="$PATH:/bin:/usr/sbin:/sbin/usr/bin"
-def Shell(command,block=True):
-    if block:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
-        return process.communicate()[0]
-    else:
-        process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
-        
+FUNCTION=arguments[0]
+if len(arguments)>2:
+    NAME=arguments[1:]
+elif len(arguments)==2:
+    NAME=[arguments[1]]
+else:
+    flags+=["--all"]
+    NAME=[]
 
-def getContainerProcesses(container):
-    if os.path.isdir(f"{ROOT}/{container}/merged"):
-       return list(map(int,Shell(f"lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
+def _list(Names):
+    names=Names
+    AllContainers=os.listdir(f"{ROOT}")
     
-def Down(command):
-    Shell(f"trap {command} EXIT;")
-
-
-def Loop(command,delay):
-    Shell(f'(while true; do "{command}"; sleep {delay}; done)')
-
-def Base(base):
-    global BASE
-    BASE=f"{base}"        
-    for dir in ["dev","proc","sys","run"]:
-        if not os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-            Shell(f"bindfs /{dir} {ROOT}/{BASE}/diff/{dir}")
-
-def Mount(IN,OUT):
-    PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
-    arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
+    if "--started" in flags:
+        names+=[_ for _ in AllContainers if "Started" in _status(_) ]
+    if "--stopped" in flags:
+        names+=[_ for _ in AllContainers if "Stopped" in _status(_) ]
+    if "--all" in flags:
+        names+=AllContainers
     
-    os.makedirs(f"diff{OUT}",exist_ok=True)
-    if not os.path.ismount(f"diff{OUT}"):
-        if arrIN[0]=="root":
-           Shell(f"bindfs {arrIN[1]} diff{OUT}")
-        elif len(arrIN)==1:
-            Shell(f"bindfs {arrIN[0]} diff{OUT}")
-        else:
-           Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
-
-def InstallPackages():
-    Shell("mkdir diff/var")
-    if not os.path.ismount("diff/var"):
-        Mount(f"{BASE}:/var","/var")
-def Layer(layer,mode="RO"):
-    global UNIONOPTS
-    UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
+    return names
     
-    
-def Run(command="",build=False):
-    global UNIONOPTS
-    container=os.path.basename(os.path.normpath(os.getcwd()))
-    Base(BASE)
-    if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
-        UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
-        Shell(f"sudo unionfs -o allow_other,suid,cow,dev,hide_meta_files {UNIONOPTS} merged")
-    Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
-
-
-def _status(container):
-    if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
-        return "Started"
-    else:
-        return "Stopped"
-        
-def _start(container):
-    os.chdir(f"{ROOT}/{container}")
-    if _status(container)=="Started":
-        return f"Container {container} is already started"
-    
-    with open("container-compose.py") as f:
-        code = compile(f.read(), 'diff/container-compose.py', 'exec')
-        exec(code,globals(),locals())
-    if "--and-chroot" in flags:
-        _chroot(container)
-    elif "--only-chroot" in flags:
-        _chroot(container)
-        _stop(container)
-        
-def _build(container):
- os.chdir(f"{ROOT}/{container}")
- with open("Containerfile") as f:
-     code = compile(f.read(), 'diff/Containerfile', 'exec')
-     exec(code,globals(),locals())
- _stop(container)
-       
-def _stop(container):
-    os.chdir(f"{ROOT}/{container}")
-    if _status(container)=="Stopped":
-        return f"Container {container} is already stopped"
-    for pid in getContainerProcesses(container):
-        Shell(f"kill -9 {pid}")
-    Shell("sudo umount -l merged")
-    
-    for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
-         Shell(f"umount -l {dir}")
-    try:
-       os.remove(f"{tempfile.gettempdir()}/container_{container}.log")
-    except:
-        pass
-
-def _restart(container):
-    return [_stop(container),_start(container)]
-    
-def _chroot(container):
-    global flags
-    if flags==[] and ("Stopped" in _status(container)):
-        flags=['--only-chroot']
-        _start(container)
-        return
-    os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
-
-def _freeze(dummy):
-    os.system(f"{os.path.realpath(__file__)} stop")
-    for dir in ["dev","proc","sys","run"]:
-        if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-            Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
-    exit()
-    
-    
-def _list(container):
-    if type(container).__name__=="list":
-       return container
-    elif container.startswith("--"):
-       if container=="--started":
-           return [_ for _ in _list("--all") if "Started" in _status(_) ]
-       elif container=="--stopped":
-           return [_ for _ in _list("--all") if "Stopped" in _status(_) ]
-       elif container=="--all":
-           return os.listdir(f"{ROOT}")
-    else:
-        return [container]
-
-def _init(container):
-    os.makedirs(f"{ROOT}/{container}",exist_ok=True)
-    os.chdir(f"{ROOT}/{container}")
-    os.makedirs("diff",exist_ok=True)
-    os.makedirs("merged",exist_ok=True)
-    with open(f"container-compose.py",'a'):
-        pass
-    
-    if '--build' in flags:
-        with open(f"Containerfile",'a'):
-            pass
-
-    _edit(container)
-
-def _edit(container):
-    if '--build' in flags:
-        os.system(f"$EDITOR {ROOT}/{container}/Containerfile")
-    else:
-        os.system(f"$EDITOR {ROOT}/{container}/container-compose.py")
-
-
 def flatten(items):
     """Yield items from any nested iterable; see Reference."""
     for x in items:
@@ -177,39 +54,176 @@ def flatten(items):
         else:
             yield x
 
-#Support for flags
-flags=[]
-local_functions=[name for (name, thing) in locals().items() if callable(thing)]
-for i in range(len(arguments)):
-    if f"_{arguments[i]}" in local_functions:
-        if i==0:
-            break
-        else:
-            flags=arguments[:i]
-            arguments=arguments[i:]
-            break
-
-FUNCTION=arguments[0]
-if len(arguments)>2:
-    NAME=arguments[1:]
-elif len(arguments)==2:
-    NAME=arguments[1]
-else:
-    NAME="--all"
-
-        
 NAME=_list(NAME)
-for name in NAME:
-    #Don't reuse variables across calls
+for name in _list(NAME):
+    PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"
+    
     BASE="alpine"
     UNIONOPTS="diff=RW"
+    
     if not os.path.isdir(f"{ROOT}/{name}"):
         if FUNCTION!="init":
-            print(f"Container {name} does not exist")
-            exit()
+         print(f"Container {name} does not exist")
+         exit()   
+
+    def Shell(command,block=True):
+        if block:
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
+            return process.communicate()[0]
+        else:
+            process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
+            
+    
+    def getContainerProcesses(container):
+        if os.path.isdir(f"{ROOT}/{container}/merged"):
+           return list(map(int,Shell(f"lsof -Fp -- {ROOT}/{container}/merged | cut -c 2-").splitlines()))
+        
+    def Down(command):
+        Shell(f"trap {command} EXIT;")
+    
+    
+    def Loop(command,delay):
+        Shell(f'(while true; do "{command}"; sleep {delay}; done)')
+    
+    def Base(base):
+        global BASE
+        BASE=f"{base}"        
+        for dir in ["dev","proc","sys","run"]:
+            if not os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
+                Shell(f"bindfs /{dir} {ROOT}/{BASE}/diff/{dir}")
+    
+    def Mount(IN,OUT):
+        PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
+        arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
+        
+        os.makedirs(f"diff{OUT}",exist_ok=True)
+        if not os.path.ismount(f"diff{OUT}"):
+            if arrIN[0]=="root":
+               Shell(f"bindfs {arrIN[1]} diff{OUT}")
+            elif len(arrIN)==1:
+                Shell(f"bindfs {arrIN[0]} diff{OUT}")
+            else:
+               Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
+    
+    def Layer(layer,mode="RO"):
+        global UNIONOPTS
+        UNIONOPTS+=f":{ROOT}/{layer}/diff={mode}"
+        
+        
+    def Run(command="",build=False):
+        global UNIONOPTS
+        container=os.path.basename(os.path.normpath(os.getcwd()))
+        Base(BASE)
+        if not UNIONOPTS.endswith(f":{ROOT}/{BASE}/diff=RO"):
+            UNIONOPTS+=f":{ROOT}/{BASE}/diff=RO"
+            Shell(f"sudo unionfs -o allow_other,suid,cow,dev,hide_meta_files {UNIONOPTS} merged")
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
+    
+    
+    def _status(container):
+        if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
+            return "Started"
+        else:
+            return "Stopped"
+            
+    def _start(container):
+        os.chdir(f"{ROOT}/{container}")
+        if _status(container)=="Started":
+            return f"Container {container} is already started"
+        
+        with open("container-compose.py") as f:
+            code = compile(f.read(), 'diff/container-compose.py', 'exec')
+            exec(code,globals(),locals())
+        if "--and-chroot" in flags:
+            _chroot(container)
+        elif "--only-chroot" in flags:
+            _chroot(container)
+            _stop(container)
+            
+    def _build(container):
+        global Run
+        os.chdir(f"{ROOT}/{container}")
+        
+        #Redefine Run for build=True
+        Run=functools.partial(Run,build=True)
+        with open("Containerfile") as f:
+         code = compile(f.read(), 'diff/Containerfile', 'exec')
+         exec(code,globals(),locals())
+        #_stop(container)
+           
+    def _stop(container):
+        os.chdir(f"{ROOT}/{container}")
+        if _status(container)=="Stopped":
+            return f"Container {container} is already stopped"
+        for pid in getContainerProcesses(container):
+            Shell(f"kill -9 {pid}")
+        Shell("sudo umount -l merged")
+        
+        for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
+             Shell(f"umount -l {dir}")
+        try:
+           os.remove(f"{tempfile.gettempdir()}/container_{container}.log")
+        except:
+            pass
+    
+    def _restart(container):
+        return [_stop(container),_start(container)]
+        
+    def _chroot(container):
+        global flags
+        if flags==[] and ("Stopped" in _status(container)):
+            flags+=['--only-chroot']
+            _start(container)
+            return
+        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{container}/merged ash")
+    
+    def _freeze(dummy):
+        os.system(f"{os.path.realpath(__file__)} stop")
+        for dir in ["dev","proc","sys","run"]:
+            if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
+                Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
+        exit()
+        
+        
+    def _list(container):
+        if type(container).__name__=="list":
+           return container
+        elif container.startswith("--"):
+           if container=="--started":
+               return [_ for _ in _list("--all") if "Started" in _status(_) ]
+           elif container=="--stopped":
+               return [_ for _ in _list("--all") if "Stopped" in _status(_) ]
+           elif container=="--all":
+               return os.listdir(f"{ROOT}")
+        else:
+            return [container]
+    
+    def _init(container):
+        os.makedirs(f"{ROOT}/{container}",exist_ok=True)
+        os.chdir(f"{ROOT}/{container}")
+        os.makedirs("diff",exist_ok=True)
+        os.makedirs("merged",exist_ok=True)
+        with open(f"container-compose.py",'a'):
+            pass
+        
+        if '--build' in flags:
+            with open(f"Containerfile",'a'):
+                pass
+    
+        _edit(container)
+    
+    def _edit(container):
+        if '--build' in flags:
+            os.system(f"$EDITOR {ROOT}/{container}/Containerfile")
+        else:
+            os.system(f"$EDITOR {ROOT}/{container}/container-compose.py")
+    
     result=list(flatten([globals()[f"_{FUNCTION}"](name)]))
+    
     for element in result:
         if element is None:
             print(end='')
         else:
             print(element)
+
+    
