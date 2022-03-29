@@ -10,27 +10,34 @@ import typing
 import tempfile
 import shutil
 import functools
-import inspect
-import sys
+
 arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
 
-#Support for flags
+#Get all flags and split the argv up accordingly
 flags=[]
 for i in range(len(arguments)):
     if arguments[i].startswith("--"):
         flags=arguments[i:]
         arguments=arguments[:i]
         break
-
+        
+#Split up function name, container names and flags
 FUNCTION=arguments[0]
+NAME=[]
 if len(arguments)>2:
     NAME=arguments[1:]
 elif len(arguments)==2:
     NAME=[arguments[1]]
-else:
+elif flags==[] and NAME==[]:
     flags+=["--all"]
     NAME=[]
+
+def _status(container):
+    if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
+        return "Started"
+    else:
+        return "Stopped"
 
 def _list(Names):
     names=Names
@@ -53,6 +60,19 @@ def flatten(items):
                 yield sub_x
         else:
             yield x
+
+def print_result(result):
+    for element in result:
+        if element is None:
+            print(end='')
+        else:
+            print(element)
+
+#If doing list, then you don't need to loop over all elements
+if FUNCTION=="list":
+    print_result(_list(NAME))
+    exit()
+
 
 NAME=_list(NAME)
 for name in _list(NAME):
@@ -120,11 +140,6 @@ for name in _list(NAME):
         Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged ash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
     
     
-    def _status(container):
-        if os.path.isfile(f"{tempfile.gettempdir()}/container_{container}.log"):
-            return "Started"
-        else:
-            return "Stopped"
             
     def _start(container):
         os.chdir(f"{ROOT}/{container}")
@@ -220,10 +235,6 @@ for name in _list(NAME):
     
     result=list(flatten([globals()[f"_{FUNCTION}"](name)]))
     
-    for element in result:
-        if element is None:
-            print(end='')
-        else:
-            print(element)
+    print_result(result)
 
     
