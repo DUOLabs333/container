@@ -116,7 +116,7 @@ class Container:
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
             
     def Start(self):
-        print(os.getcwd())
+        
         if self.Status()=="Started":
             return f"Container {self.container} is already started"
         
@@ -127,7 +127,7 @@ class Container:
         #Don't have to put Run() just to start it
         Run()
         if "--only-chroot" in self.flags:
-            return [ self.Chroot(), self.Stop(s)]
+            return [ self.Chroot(), self.Stop()]
         elif "--and-chroot" in self.flags:
             return [self.Chroot()]
         
@@ -228,7 +228,7 @@ for name in NAME:
     container=Container(name,flags,UNIONOPTS)
     Run=container.Run
     Layer=container.Layer
-    print(name)
+    
     if not os.path.isdir(f"{ROOT}/{name}"):
         if FUNCTION!="init":
          print(f"Container {name} does not exist")
