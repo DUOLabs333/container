@@ -33,9 +33,9 @@ def List(Names):
     AllContainers=os.listdir(f"{ROOT}")
     
     if "--started" in flags:
-        names+=[_ for _ in AllContainers if "Started" in _status(_) ]
+        names+=[_ for _ in AllContainers if "Started" in Container(_).Status() ]
     if "--stopped" in flags:
-        names+=[_ for _ in AllContainers if "Stopped" in _status(_) ]
+        names+=[_ for _ in AllContainers if "Stopped" in Container(_).Status() ]
     if "--all" in flags:
         names+=AllContainers
     
@@ -78,24 +78,29 @@ def Mount(IN,OUT):
            Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
 
 
-def Container(container,_flags=None):
-    def __init__(self):
-        self.container=container
+class Container:
+    def __init__(self,_container,_flags=None,_unionopts=None):
+        self.container=_container
         if _flags is None:
             self.flags=flags
         else:
             self.flags=_flags
             
         self.base="void"
-        self.unionopts="diff=RW"
-        os.chdir(f"{ROOT}/{self.base}")
+        
+        if _unionopts is None:
+            self.unionopts="diff=RW"
+        else:
+            self.unionopts=_unionopts
+        #Deal with with chance this doesn't exist yet
+        os.chdir(f"{ROOT}/{self.container}")
 
-    def Run(self,command="",build=False):
+    def Run(self,command="",block=False):
         self.Base(self.base)
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
             Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {self.unionopts} merged")
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=build)
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         if os.path.isdir("merged"):
@@ -111,35 +116,36 @@ def Container(container,_flags=None):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
             
     def Start(self):
-        if self.Status(self.container)=="Started":
+        print(os.getcwd())
+        if self.Status()=="Started":
             return f"Container {self.container} is already started"
         
         with open("container-compose.py") as f:
-            code = compile(f.read(), 'diff/container-compose.py', 'exec')
+            code = compile(f.read(), 'container-compose.py', 'exec')
             exec(code,globals(),locals())
             
         #Don't have to put Run() just to start it
         Run()
         if "--only-chroot" in self.flags:
-            return [ self.Chroot(self.container), self.Stop(self.container)]
+            return [ self.Chroot(), self.Stop(s)]
         elif "--and-chroot" in self.flags:
-            return [self.Chroot(self.container)]
+            return [self.Chroot()]
         
     def Build(self):
         
-        self.Stop(self.container)
+        self.Stop()
         
         #Redefine Run for build=True
         self.Run=functools.partial(self.Run,build=True)
         with open("Containerfile") as f:
-         code = compile(f.read(), 'diff/Containerfile', 'exec')
+         code = compile(f.read(), 'Containerfile', 'exec')
          exec(code,globals(),locals())
         self.Stop(self.container)
        
     def Stop(self):
-        if self.Status(self.container)=="Stopped":
+        if self.Status()=="Stopped":
             return f"Container {self.container} is already stopped"
-        for pid in self.GetProc(self.container):
+        for pid in self.GetProc():
             #Shell(f"kill -9 {pid}")
             os.kill(pid,signal.SIGKILL)
         Shell("sudo umount -l merged")
@@ -152,68 +158,65 @@ def Container(container,_flags=None):
             pass
 
     def Restart(self):
-        return [Stop(self.container),self.Start(self.container)]
+        return [self.Stop(),self.Start()]
     
-def chroot(self):
-    global flags
-    if flags==[] and ("Stopped" in _status(self.container)):
-        flags+=['--only-chroot']
-        _start(self.container)
-        return
-    os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged bash")
+    def Chroot(self):
+        if self.flags==[] and ("Stopped" in self.Status()):
+            return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
+        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged bash")
 
-def _freeze(dummy):
-    os.system(f"{os.path.realpath(__file__)} stop > /dev/null")
-    for dir in ["dev","proc","sys","run"]:
-        if os.path.ismount(f"{ROOT}/{BASE}/diff/{dir}"):
-            Shell(f"umount {ROOT}/{BASE}/diff/{dir}")
-    exit()
+    def Freeze():
+        os.system(f"{os.path.realpath(__file__)} stop > /dev/null")
+        for dir in ["dev","proc","sys","run"]:
+            if os.path.ismount(f"{ROOT}/{self.base}/diff/{dir}"):
+                Shell(f"umount {ROOT}/{self.base}/diff/{dir}")
+        exit()
     
     
-def list(self):
-    return [container]
+    def List(self):
+        return self.container
 
-def init(self):
-    global flags
-    os.makedirs(f"{ROOT}/{self.container}",exist_ok=True)
-    os.chdir(f"{ROOT}/{self.container}")
-    os.makedirs("diff",exist_ok=True)
-    os.makedirs("merged",exist_ok=True)
-    with open(f"container-compose.py",'a'):
-        pass
-    
-    if '--build' in flags:
-        with open(f"Containerfile",'a'):
+    def Init(self):
+        #Probably unneccessary 
+        os.makedirs(f"{ROOT}/{self.container}",exist_ok=True)
+        
+        os.makedirs("diff",exist_ok=True)
+        os.makedirs("merged",exist_ok=True)
+        with open(f"container-compose.py",'a'):
             pass
-
-    _edit(self.container)
+        
+        if '--build' in flags:
+            with open(f"Containerfile",'a'):
+                pass
     
-    if '--and-chroot' in flags:
-        flags+=['--only-chroot']
-        _start(self.container)
+        self.Edit()
+        
+        if '--and-chroot' in flags:
+            return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
 
-def edit(self):
-    if '--build' in flags:
-        os.system(f"$EDITOR {ROOT}/{self.container}/Containerfile")
-    else:
-        os.system(f"$EDITOR {ROOT}/{self.container}/container-compose.py")
+    def Edit(self):
+        if '--build' in self.flags:
+            os.system(f"$EDITOR {ROOT}/{self.container}/Containerfile")
+        else:
+            os.system(f"$EDITOR {ROOT}/{self.container}/container-compose.py")
 
-def status(self):
-    if os.path.isfile(f"{tempfile.gettempdir()}/container_{self.container}.log"):
-        return "Started"
-    else:
-        return "Stopped"
+    def Status(self):
+        if os.path.isfile(f"{tempfile.gettempdir()}/container_{self.container}.log"):
+            return "Started"
+        else:
+            return "Stopped"
 
-def log(self):
-    os.system(f"less +G {tempfile.gettempdir()}/container_{self.container}.log")
+    def Log(self):
+        os.system(f"less +G {tempfile.gettempdir()}/container_{self.container}.log")
+    
+    def Clean(self):
+        self.Stop()
+        os.system(f"sudo rm -rf {ROOT}/{self.container}/diff/*")
+    
+    def delete(self):
+        self.Stop()
+        os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
-def clean(self):
-    _stop(self.container)
-    os.system(f"sudo rm -rf {ROOT}/{self.container}/diff/*")
-
-def delete(self):
-    _stop(self.container)
-    os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
 NAME=List(NAME)
 for name in NAME:
@@ -222,12 +225,16 @@ for name in NAME:
     BASE="void"
     UNIONOPTS="diff=RW"
     
+    container=Container(name,flags,UNIONOPTS)
+    Run=container.Run
+    Layer=container.Layer
+    print(name)
     if not os.path.isdir(f"{ROOT}/{name}"):
         if FUNCTION!="init":
          print(f"Container {name} does not exist")
          exit()   
-         
-    result=list(flatten([globals()[f"_{FUNCTION}"](name)]))
+    
+    result=list(flatten([getattr(container,FUNCTION.title())()]))
     print_result(result)
 
     
