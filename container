@@ -9,27 +9,24 @@ import tempfile
 import shutil
 import functools
 
-arguments=sys.argv[1:]
 ROOT=os.path.expanduser("~/Containers")
 
-#Get all flags and split the argv up accordingly
-flags=[]
-for i in range(len(arguments)):
-    if arguments[i].startswith("--"):
-        flags=arguments[i:]
-        arguments=arguments[:i]
-        break
-        
-#Split up function name, container names and flags
+arguments=sys.argv[1:]
 FUNCTION=arguments[0]
+arguments=arguments[1:]
 NAME=[]
-if len(arguments)>2:
-    NAME=arguments[1:]
-elif len(arguments)==2:
-    NAME=[arguments[1]]
-elif flags==[] and NAME==[]:
+flags=arguments
+
+#Flags go before the actual container names
+for i in range(len(arguments)):
+    if not arguments[i].startswith("--"):
+        flags=arguments[:i]
+        NAME=arguments[i:]
+        break
+
+#If there's only a function name
+if flags==[] and NAME==[]:
     flags+=["--all"]
-    NAME=[]
 
 def List(Names):
     names=Names
@@ -60,6 +57,27 @@ def print_result(result):
         else:
             print(element)
 
+
+def Container(container,_flags=None):
+    def __init__(self):
+        self.container=container
+        if _flags is None:
+            self.flags=flags
+        else:
+            self.flags=_flags
+            
+        self.base="void"
+        self.unionopts="diff=RW"
+        os.chdir(f"{ROOT}/{self.base}")
+
+    def Run(self,command="",build=False):
+        self.Base(self.base)
+        if not self.unionopts.endswith(f":{ROOT}/{BASE}/diff=RO"):
+            self.unionopts+=f":{ROOT}/{BASE}/diff=RO"
+            Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {UNIONOPTS} merged")
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{container}.log 2>&1""",block=build)
+
+        
 def Run(command="",build=False):
     global UNIONOPTS
     container=os.path.basename(os.path.normpath(os.getcwd()))
@@ -141,8 +159,8 @@ def _stop(container):
     if _status(container)=="Stopped":
         return f"Container {container} is already stopped"
     for pid in getContainerProcesses(container):
-        #Replace with os.kill
-        Shell(f"kill -9 {pid}")
+        #Shell(f"kill -9 {pid}")
+        os.kill(pid,signal.SIGKILL)
     Shell("sudo umount -l merged")
     
     for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{container}/diff").splitlines():
