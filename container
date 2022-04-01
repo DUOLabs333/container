@@ -64,20 +64,12 @@ def Shell(command,block=True):
     else:
         process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
 
-def Mount(IN,OUT):
-    PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
-    arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
+
+
+
+class ContainerDoesNotExist(Exception):
+    pass
     
-    os.makedirs(f"diff{OUT}",exist_ok=True)
-    if not os.path.ismount(f"diff{OUT}"):
-        if arrIN[0]=="root":
-           Shell(f"bindfs {arrIN[1]} diff{OUT}")
-        elif len(arrIN)==1:
-            Shell(f"bindfs {arrIN[0]} diff{OUT}")
-        else:
-           Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
-
-
 class Container:
     def __init__(self,_container,_flags=None,_unionopts=None):
         self.container=_container
@@ -92,25 +84,47 @@ class Container:
             self.unionopts="diff=RW"
         else:
             self.unionopts=_unionopts
-        #Deal with with chance this doesn't exist yet
-        os.chdir(f"{ROOT}/{self.container}")
+        
+        
+        if not os.path.isdir(f"{ROOT}/{self.container}"):
+            if FUNCTION != "init":
+             raise ContainerDoesNotExist()
+             return
+        if FUNCTION != "init":
+            os.chdir(f"{ROOT}/{self.container}")
 
     def Run(self,command="",block=False):
         self.Base(self.base)
+            
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
-            Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {self.unionopts} merged")
+            Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files,direct_io {self.unionopts} merged")
         Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         if os.path.isdir("merged"):
            return list(map(int,Shell("lsof -Fp -- merged | cut -c 2-").splitlines()))
+        else:
+            return []
     
+    def Mount(self,IN,OUT):
+        PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
+        arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
+        
+        os.makedirs(f"diff{OUT}",exist_ok=True)
+        if not os.path.ismount(f"diff{OUT}"):
+            if arrIN[0]=="root":
+               Shell(f"bindfs -o direct_io {arrIN[1]} diff{OUT}")
+            elif len(arrIN)==1:
+                Shell(f"bindfs -o direct_io {arrIN[0]} diff{OUT}")
+            else:
+               Shell(f"bindfs -o direct_io {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
+
     def Base(self,base):
         self.base=base
         for dir in ["dev","proc","sys","run"]:
             if not os.path.ismount(f"{ROOT}/{self.base}/diff/{dir}"):
-                Shell(f"bindfs -o dev /{dir} {ROOT}/{self.base}/diff/{dir}")
+                Container(self.base).Mount(f"/{dir}",f"/{dir}")
 
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
@@ -140,11 +154,12 @@ class Container:
         with open("Containerfile") as f:
          code = compile(f.read(), 'Containerfile', 'exec')
          exec(code,globals(),locals())
-        self.Stop(self.container)
+        self.Stop()
        
     def Stop(self):
         if self.Status()=="Stopped":
-            return f"Container {self.container} is already stopped"
+            if self.container!=self.base:
+                return f"Container {self.container} is already stopped"
         for pid in self.GetProc():
             #Shell(f"kill -9 {pid}")
             os.kill(pid,signal.SIGKILL)
@@ -165,7 +180,7 @@ class Container:
             return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
         os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged bash")
 
-    def Freeze():
+    def Freeze(self):
         os.system(f"{os.path.realpath(__file__)} stop > /dev/null")
         for dir in ["dev","proc","sys","run"]:
             if os.path.ismount(f"{ROOT}/{self.base}/diff/{dir}"):
@@ -177,9 +192,9 @@ class Container:
         return self.container
 
     def Init(self):
-        #Probably unneccessary 
+       
         os.makedirs(f"{ROOT}/{self.container}",exist_ok=True)
-        
+        os.chdir(f"{ROOT}/{self.container}")
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
         with open(f"container-compose.py",'a'):
@@ -211,9 +226,9 @@ class Container:
     
     def Clean(self):
         self.Stop()
-        os.system(f"sudo rm -rf {ROOT}/{self.container}/diff/*")
+        os.system(f"sudo rm -rf diff/*")
     
-    def delete(self):
+    def Delete(self):
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
@@ -225,16 +240,17 @@ for name in NAME:
     BASE="void"
     UNIONOPTS="diff=RW"
     
-    container=Container(name,flags,UNIONOPTS)
+    try:
+        container=Container(name,flags,UNIONOPTS)
+    except ContainerDoesNotExist:
+        print(f"Container {name} does not exist")
+        continue
     Run=container.Run
     Layer=container.Layer
-    
-    if not os.path.isdir(f"{ROOT}/{name}"):
-        if FUNCTION!="init":
-         print(f"Container {name} does not exist")
-         exit()   
+    Mount=container.Mount
     
     result=list(flatten([getattr(container,FUNCTION.title())()]))
     print_result(result)
+        
 
     
