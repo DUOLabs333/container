@@ -85,7 +85,8 @@ class Container:
         else:
             self.unionopts=_unionopts
         
-        
+        #Whether we mounted dev, proc, etc.
+        self.mounted_special=False
         if not os.path.isdir(f"{ROOT}/{self.container}"):
             if FUNCTION != "init":
              raise ContainerDoesNotExist()
@@ -99,9 +100,13 @@ class Container:
             self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
             
             Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {self.unionopts} merged")
-        for dir in ["dev","proc","sys","run"]:
-            if not os.path.ismount(f"merged/{dir}"):
-                Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
+            
+        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs
+        if not self.mounted_special:
+            for dir in ["dev","proc","sys","run"]:
+                if not os.path.ismount(f"merged/{dir}"):
+                    print(Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}"))
+            self.mounted_special=True
 
         Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
     
@@ -141,7 +146,7 @@ class Container:
             code = compile(f.read(), 'container-compose.py', 'exec')
             exec(code,globals(),locals())
             
-        #Don't have to put Run() just to start it
+        #Don't have to put Run() in container-compose.py just to start it
         Run()
         if "--only-chroot" in self.flags:
             return [ self.Chroot(), self.Stop()]
@@ -153,7 +158,7 @@ class Container:
         self.Stop()
         
         #Redefine Run for build=True
-        self.Run=functools.partial(self.Run,block=True)
+        Run=functools.partial(self.Run,block=True)
         with open("Containerfile") as f:
          code = compile(f.read(), 'Containerfile', 'exec')
          exec(code,globals(),locals())
@@ -167,9 +172,10 @@ class Container:
             os.kill(pid,signal.SIGKILL)
         Shell("sudo umount -l merged")
         
-        for dir in ["dev","proc","sys","run"]:
-            if os.path.ismount(f"merged/{dir}"):
-                Shell(f"sudo umount -l merged/{dir}")
+        if os.path.isdir("merged"):
+            for dir in os.listdir("merged"):
+                if os.path.ismount(f"merged/{dir}"):
+                    Shell(f"sudo umount -l merged/{dir}")
 
         for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{self.container}/diff").splitlines():
              Shell(f"umount -l {dir}")
