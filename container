@@ -96,22 +96,25 @@ class Container:
 
     def Run(self,command="",block=False):
         self.Base(self.base)
+        #Only mount if this is the first Run called, where the base hasn't been added to unionopts
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
             
-            Shell(f"sudo unionfs -o allow_other,cow,dev,hide_meta_files {self.unionopts} merged")
-            
-        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs
+            #Prevent merged from being mounted multiple times
+            if not os.path.ismount("merged"):
+                Shell(f"unionfs -o allow_other,cow,hide_meta_files {self.unionopts} merged")
+    
+        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc","sys","run"]:
                 if not os.path.ismount(f"merged/{dir}"):
-                    print(Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}"))
+                    Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
             self.mounted_special=True
 
         Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
-        print(os.getcwd())
+        
         if os.path.isdir("merged"):
            return list(map(int,Shell("lsof -Fp -w -- merged | cut -c 2-").splitlines()))
         else:
@@ -167,11 +170,12 @@ class Container:
     def Stop(self):
         if self.Status()=="Stopped":
             if self.container!=self.base:
-                return f"Container {self.container} is already stopped"
+                #return f"Container {self.container} is already stopped"
+                pass
         for pid in self.GetProc():
             os.kill(pid,signal.SIGKILL)
-        Shell("sudo umount -l merged")
         
+        #Unmount dev,proc, etc. if directory exists
         if os.path.isdir("merged"):
             for dir in os.listdir("merged"):
                 if os.path.ismount(f"merged/{dir}"):
@@ -181,8 +185,10 @@ class Container:
              Shell(f"umount -l {dir}")
         try:
            os.remove(f"{tempfile.gettempdir()}/container_{self.container}.log")
-        except:
+        except FileNotFoundError:
             pass
+        
+        Shell("umount -l merged")
 
     def Restart(self):
         return [self.Stop(),self.Start()]
@@ -191,13 +197,6 @@ class Container:
         if self.flags==[] and ("Stopped" in self.Status()):
             return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
         os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged bash")
-
-    def Freeze(self):
-        os.system(f"{os.path.realpath(__file__)} stop > /dev/null")
-        for dir in ["dev","proc","sys","run"]:
-            if os.path.ismount(f"{ROOT}/{self.base}/diff/{dir}"):
-                Shell(f"umount {ROOT}/{self.base}/diff/{dir}")
-        exit()
     
     
     def List(self):
