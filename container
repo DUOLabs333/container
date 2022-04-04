@@ -108,7 +108,9 @@ class Container:
         if not self.mounted_special:
             for dir in ["dev","proc","sys","run"]:
                 if not os.path.ismount(f"merged/{dir}"):
-                    Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
+                    #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
+                    #Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
+                    Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
 
         Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
@@ -116,7 +118,7 @@ class Container:
     def GetProc(self):
         
         if os.path.isdir("merged"):
-           return list(map(int,Shell("lsof -Fp -w -- merged | cut -c 2-").splitlines()))
+           return list(map(int,Shell("lsof -Fp -- merged | cut -c 2-").splitlines()))
         else:
             return []
     
@@ -179,7 +181,9 @@ class Container:
         if os.path.isdir("merged"):
             for dir in os.listdir("merged"):
                 if os.path.ismount(f"merged/{dir}"):
-                    Shell(f"sudo umount -l merged/{dir}")
+                    #Shell(f"sudo umount -l merged/{dir}")
+                    Shell(f"sudo mount --make-rslave merged/{dir}")
+                    Shell(f"sudo umount -R -l merged/{dir}")
 
         for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{self.container}/diff").splitlines():
              Shell(f"umount -l {dir}")
