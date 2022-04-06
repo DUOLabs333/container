@@ -23,16 +23,29 @@ Base(base) --- Make base the base container for the container
 Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted
 
 Commands:
+
 start --- runs container-compose.py
+
 build --- runs Containerfile
+
 stop --- kills all processes in container
+
 restart --- stops, then starts the container
+
 chroot --- runs a shell in the container
+
 list --- list specified containers
+
 init --- make new container
+
 edit --- edit container-compose.py
+
 status --- list status of container ("Started" or "Stopped")
+
 log --- read log of container
+
 clean --- delete everything in the container's diff folder
+
 delete --- deletes the container
+
 import (highly experimental) --- imports a Docker container into container's system. Because in the differences in architectures, container can not take advantage of layer sharing -- ie, if two containers have the same layer, that layer will not be shared. Because of this, this is meant to be used for one-off containers, and should not be relied on.
