@@ -10,6 +10,9 @@ import shutil
 import functools
 import urllib.request
 import json
+import tarfile
+from pprint import pprint
+import platform
 
 ROOT=os.path.expanduser("~/Containers")
 
@@ -255,33 +258,84 @@ def Import():
     
     image = [_ for _ in list(PATTERN.split(image)) if _ not in ['', ':']]
     
+    #Support Docker official images
+    if '/' not in image[0]:
+        image[0]='library/'+image[0]
+        
     if len(image)==1:
         image.append('latest')
+        
     #Get token
     token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
     
     token=json.loads(token)["token"]
     
+    
+    #Get right architecture
+    manifest_list=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
+    
+    manifest_list=urllib.request.urlopen(manifest_list).read().decode()
+    
+    architecture=platform.machine()
+    
+    #Handle some Linux distros that report aarch64 instead of amr64
+    if architecture=='aarch64':
+        architecture=['arm64']
+        
+    #Handle the arm* family
+    elif architecture.startswith('arm'):
+        
+        #Handle armv6, armv7l, etc.
+        if 'v' in architecture:
+            architecture=architecture.split('v')
+            architecture[1]='v'+architecture[1]
+        else:
+            architecture=[architecture]
+    else:
+        architecture=[architecture]
+        
+    manifest_list=json.loads(manifest_list)['manifests']
+    
+    for manifest in manifest_list:
+        if manifest['platform']['architecture']==architecture[0]:
+            #Deal with armv* family
+            if len(architecture)==2:
+                if manifest['platform']['variant']==architecture[1]:
+                    digest=manifest['digest']
+                    break
+            else:
+                digest=manifest['digest']
+                break
+
     #Get information about layers
-    request=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
+    layers=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{digest}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
     
-    request=urllib.request.urlopen(request).read().decode()
+    layers=urllib.request.urlopen(layers).read().decode()
     
-    request=json.loads(request)["layers"]
+    layers=json.loads(layers)["layers"]
     
-    layers=[_["digest"] for _ in request]
+    layers=[_["digest"] for _ in layers]
     
-    #Special code to handle urlretrieve
+    
+    #Special code for urlretrieve
     opener = urllib.request.build_opener()
     opener.addheaders = [('Authorization', f"Bearer {token}")]
     urllib.request.install_opener(opener)
     
     #Download layers
     for i in range(len(layers)):
-        urllib.request.urlretrieve(f"https://index.docker.io/v2/1337kavin/piped-frontend/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+        urllib.request.urlretrieve(f"https://index.docker.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
     
-    #Init container
+    #Initialize container
     Container(container,_flags=flags+['--no-edit']).Init()
+    
+    #Extract to container
+    for tar in os.listdir(temp_folder):
+        tar = tarfile.open(f"{temp_folder}/{tar}")
+        tar.extractall(f"{ROOT}/{container}/diff")
+        tar.close()
+    
+    shutil.rmtree(temp_folder)
 #If FUNCTION is one of the "special functions", do that
 if FUNCTION in ["import"]:
     globals()[FUNCTION.title()]()
