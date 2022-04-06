@@ -13,6 +13,7 @@ import json
 import tarfile
 from pprint import pprint
 import platform
+import urllib
 
 ROOT=os.path.expanduser("~/Containers")
 
@@ -23,7 +24,7 @@ NAME=[]
 flags=arguments
 TEMP=tempfile.gettempdir()
 PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
-
+SHELL=os.getenv('SHELL','bash')
 
 
 #Helper functions
@@ -70,7 +71,7 @@ class ContainerDoesNotExist(Exception):
     pass
     
 class Container:
-    def __init__(self,_container,_flags=None,_unionopts=None):
+    def __init__(self,_container,_flags=None,_unionopts=None,_workdir='/'):
         self.container=_container
         if _flags is None:
             self.flags=flags
@@ -87,12 +88,14 @@ class Container:
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
         
+        self.workdir=_workdir
         if FUNCTION not in ["init","import"]:
             if not os.path.isdir(f"{ROOT}/{self.container}"):
                  raise ContainerDoesNotExist()
                  return
             os.chdir(f"{ROOT}/{self.container}")
-
+    
+    #Functions
     def Run(self,command="",block=False):
         self.Base(self.base)
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
@@ -102,7 +105,7 @@ class Container:
             #Prevent merged from being mounted multiple times
             if not os.path.ismount("merged"):
                 Shell(f"unionfs -o allow_other,cow,hide_meta_files {self.unionopts} merged")
-    
+        
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc","sys","run"]:
@@ -112,7 +115,7 @@ class Container:
                     Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
 
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "cd {self.workdir}; {command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         
@@ -138,7 +141,40 @@ class Container:
 
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
+    
+    def Workdir(self,work_dir):
+        if work_dir.startswith("/"):
+            self.workdir=work_dir
+        else:    
+            self.workdir+='/'+work_dir
             
+    
+    def Copy(self,src,dest):
+        
+        #Relative directory
+        if not dest.startswith("/"):
+            dest=f"diff{self.workdir}/{dest}"
+        
+        #Absolute directory
+        else:
+            dest=f"diff{dest}"
+        
+        #Remove trailing slashes, in order to prevent gotchas with cp
+        if src.endswith("/"):
+            src=src[:-1]
+        if dest.endswith("/"):
+            dest=dest[:-1]
+                
+                     
+        cp_error=Shell(f"cp -a {src} {dest}")
+        
+        if "cp: cannot create" in cp_error:
+            #dest does not exist, so create its parent's folder
+            os.makedirs(os.path.dirname(dest),exist_ok=True)
+        
+        Shell(f"cp -a {src} {dest}")
+
+    #Commands      
     def Start(self):
         
         self.Base(self.base)
@@ -198,7 +234,7 @@ class Container:
     def Chroot(self):
         if self.flags==[] and ("Stopped" in self.Status()):
             return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
-        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged bash")
+        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged {SHELL}")
     
     
     def List(self):
@@ -246,29 +282,65 @@ class Container:
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
-#Special functions
-def Import():
+#Initializing some important things
+#Flags go before the actual container names
+for i in range(len(arguments)):
+    if not arguments[i].startswith("--"):
+        flags=arguments[:i]
+        NAME=arguments[i:]
+        break
+
+#If there's only a function name
+if flags==[] and NAME==[]:
+    flags+=["--all"]
+
+#Special functions -- they don't follow any normal rules
+def Import(_image=NAME[0],_container=NAME[1]):
     
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
+    image=_image
+    container=_container
     
+    #What registry is being used
+    registry=''
     
-    image=arguments[0]
-    container=arguments[1]
+    if 'https://hub.docker.com/' in image:
+        registry='docker'
+    elif 'https://quay.io' in image:
+        registry='quay'
+    else:
+        registry='docker'
     
+    #Convert urls into a proper format:
+    
+    #If there's more than one /, then this is a url
+    if image.count('/') >1:
+        #There's no https, we should fix that
+        if urllib.parse.urlparse(image).netloc=='':
+            image='https://' + image
+    
+    image=urllib.parse.urlparse(image).path
+    
+    if image.startswith('/'):
+        image=image[1:]
+        
     image = [_ for _ in list(PATTERN.split(image)) if _ not in ['', ':']]
     
     #Support Docker official images
-    if '/' not in image[0]:
-        image[0]='library/'+image[0]
+    if registry=='docker':
+        if '/' not in image[0]:
+            image[0]='library/'+image[0]
         
     if len(image)==1:
         image.append('latest')
         
     #Get token
-    token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
     
-    token=json.loads(token)["token"]
+    if registry=='docker':
+        token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
+        
+        token=json.loads(token)["token"]
     
     
     #Get right architecture
@@ -342,24 +414,14 @@ def Import():
         tar.close()
     
     shutil.rmtree(temp_folder)
+
+
 #If FUNCTION is one of the "special functions", do that
 if FUNCTION in ["import"]:
     globals()[FUNCTION.title()]()
     exit()
 
 #Else, it's one of the standard functions:
-    
-#Flags go before the actual container names
-for i in range(len(arguments)):
-    if not arguments[i].startswith("--"):
-        flags=arguments[:i]
-        NAME=arguments[i:]
-        break
-
-#If there's only a function name
-if flags==[] and NAME==[]:
-    flags+=["--all"]
-
 NAME=List(NAME)
 for name in NAME:
     PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"
@@ -376,6 +438,7 @@ for name in NAME:
     Layer=container.Layer
     Mount=container.Mount
     Base=container.Base
+    Copy=container.Copy
     
     result=list(flatten([getattr(container,FUNCTION.title())()]))
     print_result(result)
