@@ -7,4 +7,31 @@ To start,
 4. Run "container init $CONTAINER" and edit the container-compose.py with the commands to start
 5. Once you have prepared your image, run "container start $CONTAINER"
 
-Containerfile
+Containerfile:
+This is where you list the steps to build the image. By default, the commands are blocking -- ie, a Run command will not end until the command is finished
+
+container-compose.py:
+This is where you list the steps to run the image. By default, the commands are non-blocking.
+
+Functions (to be used in Containerfile and container-compose.py):
+
+Run(command="",block=False) --- Run command in container. block indicates whether the command should be blocking
+
+Mount(IN,OUT) --- mount directory on IN, in OUT. IN can either be an absolute path, which will mount the directory relative to the host); or an absolute path prefixed with a container name (ie, 'void:/var'), which mount the directory relative to the prefix. OUT is an absolute path relative to the container.
+Base(base) --- Make base the base container for the container
+
+Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted
+
+Commands:
+start --- runs container-compose.py
+build --- runs Containerfile
+stop --- kills all processes in container
+restart --- stops, then starts the container
+chroot --- runs a shell in the container
+list --- list specified containers
+init --- make new container
+edit --- edit container-compose.py
+status --- list status of container ("Started" or "Stopped")
+log --- read log of container
+clean --- delete everything in the container's diff folder
+delete --- deletes the container
