@@ -308,9 +308,15 @@ def Import():
                 break
 
     #Get information about layers
+    
     layers=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{digest}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
     
+    
     layers=urllib.request.urlopen(layers).read().decode()
+    
+    #config=json.loads(layers)['config']
+    #config=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{config['digest']}", headers={'Authorization':f"Bearer {token}","Accept":config['mediaType']})
+    #config=urllib.request.urlopen(config).read().decode()
     
     layers=json.loads(layers)["layers"]
     
