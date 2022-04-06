@@ -35,3 +35,4 @@ status --- list status of container ("Started" or "Stopped")
 log --- read log of container
 clean --- delete everything in the container's diff folder
 delete --- deletes the container
+import (highly experimental) --- imports a Docker container into container's system. Because in the differences in architectures, container can not take advantage of layer sharing -- ie, if two containers have the same layer, that layer will not be shared. Because of this, this is meant to be used for one-off containers, and should not be relied on.
