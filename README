@@ -4,4 +4,7 @@ To start,
 1. make folder ~/Containers, and move container into a place in your $PATH
 2. Next, run "container init void"
 3. Download a Void Linux rootfs and move it into ~/Containers/void/diff
-4. Run "container init $CONTAINER
+4. Run "container init $CONTAINER" and edit the container-compose.py with the commands to start
+5. Once you have prepared your image, run "container start $CONTAINER"
+
+Containerfile

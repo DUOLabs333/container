@@ -18,17 +18,10 @@ FUNCTION=arguments[0]
 arguments=arguments[1:]
 NAME=[]
 flags=arguments
+TEMP=tempfile.gettempdir()
+PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
 
-#Flags go before the actual container names
-for i in range(len(arguments)):
-    if not arguments[i].startswith("--"):
-        flags=arguments[:i]
-        NAME=arguments[i:]
-        break
 
-#If there's only a function name
-if flags==[] and NAME==[]:
-    flags+=["--all"]
 
 #Helper functions
 def List(Names):
@@ -90,11 +83,11 @@ class Container:
         
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
-        if not os.path.isdir(f"{ROOT}/{self.container}"):
-            if FUNCTION != "init":
-             raise ContainerDoesNotExist()
-             return
-        if FUNCTION != "init":
+        
+        if FUNCTION not in ["init","import"]:
+            if not os.path.isdir(f"{ROOT}/{self.container}"):
+                 raise ContainerDoesNotExist()
+                 return
             os.chdir(f"{ROOT}/{self.container}")
 
     def Run(self,command="",block=False):
@@ -116,7 +109,7 @@ class Container:
                     Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
 
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {tempfile.gettempdir()}/container_{self.container}.log 2>&1""",block=block)
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged bash -c "{command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         
@@ -126,7 +119,6 @@ class Container:
             return []
     
     def Mount(self,IN,OUT):
-        PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
         arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
         
         os.makedirs(f"diff{OUT}",exist_ok=True)
@@ -191,7 +183,7 @@ class Container:
         for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{self.container}/diff").splitlines():
              Shell(f"umount -l {dir}")
         try:
-           os.remove(f"{tempfile.gettempdir()}/container_{self.container}.log")
+           os.remove(f"{TEMP}/container_{self.container}.log")
         except FileNotFoundError:
             pass
         
@@ -218,13 +210,14 @@ class Container:
         with open(f"container-compose.py",'a'):
             pass
         
-        if '--build' in flags:
+        if '--build' in self.flags:
             with open(f"Containerfile",'a'):
                 pass
-    
-        self.Edit()
         
-        if '--and-chroot' in flags:
+        if '--no-edit' not in self.flags:
+            self.Edit()
+        
+        if '--and-chroot' in self.flags:
             return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
 
     def Edit(self):
@@ -234,13 +227,13 @@ class Container:
             os.system(f"$EDITOR {ROOT}/{self.container}/container-compose.py")
 
     def Status(self):
-        if os.path.isfile(f"{tempfile.gettempdir()}/container_{self.container}.log"):
+        if os.path.isfile(f"{TEMP}/container_{self.container}.log"):
             return "Started"
         else:
             return "Stopped"
 
     def Log(self):
-        os.system(f"less +G {tempfile.gettempdir()}/container_{self.container}.log")
+        os.system(f"less +G {TEMP}/container_{self.container}.log")
     
     def Clean(self):
         self.Stop()
@@ -250,31 +243,63 @@ class Container:
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
+#Special functions
 def Import():
-    PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
-    container=arguments[0]
-    target_dir=arguments[1]
     
-    container = [_ for _ in list(PATTERN.split(container)) if _ not in ['', ':']]
-    token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{container[0]}:pull").read().decode()
+    #Make temp folder
+    temp_folder=tempfile.mkdtemp()
+    
+    
+    image=arguments[0]
+    container=arguments[1]
+    
+    image = [_ for _ in list(PATTERN.split(image)) if _ not in ['', ':']]
+    
+    if len(image)==1:
+        image.append('latest')
+    #Get token
+    token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
     
     token=json.loads(token)["token"]
     
-    request=urllib.request.Request("https://index.docker.io/v2/1337kavin/piped-frontend/manifests/latest", headers={'Authorization':f"Bearer {token}"})
+    #Get information about layers
+    request=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
     
     request=urllib.request.urlopen(request).read().decode()
     
-    request=json.loads(request)["fsLayers"]
+    request=json.loads(request)["layers"]
     
-    layers=[_["
+    layers=[_["digest"] for _ in request]
     
+    #Special code to handle urlretrieve
+    opener = urllib.request.build_opener()
+    opener.addheaders = [('Authorization', f"Bearer {token}")]
+    urllib.request.install_opener(opener)
     
-    print(layers)
-
-#Special functions
+    #Download layers
+    for i in range(len(layers)):
+        urllib.request.urlretrieve(f"https://index.docker.io/v2/1337kavin/piped-frontend/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+    
+    #Init container
+    Container(container,_flags=flags+['--no-edit']).Init()
+#If FUNCTION is one of the "special functions", do that
 if FUNCTION in ["import"]:
     globals()[FUNCTION.title()]()
     exit()
+
+#Else, it's one of the standard functions:
+    
+#Flags go before the actual container names
+for i in range(len(arguments)):
+    if not arguments[i].startswith("--"):
+        flags=arguments[:i]
+        NAME=arguments[i:]
+        break
+
+#If there's only a function name
+if flags==[] and NAME==[]:
+    flags+=["--all"]
+
 NAME=List(NAME)
 for name in NAME:
     PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"
