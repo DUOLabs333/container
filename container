@@ -8,6 +8,8 @@ import typing
 import tempfile
 import shutil
 import functools
+import urllib.request
+import json
 
 ROOT=os.path.expanduser("~/Containers")
 
@@ -28,6 +30,7 @@ for i in range(len(arguments)):
 if flags==[] and NAME==[]:
     flags+=["--all"]
 
+#Helper functions
 def List(Names):
     names=Names
     AllContainers=os.listdir(f"{ROOT}")
@@ -247,7 +250,31 @@ class Container:
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
+def Import():
+    PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
+    container=arguments[0]
+    target_dir=arguments[1]
+    
+    container = [_ for _ in list(PATTERN.split(container)) if _ not in ['', ':']]
+    token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{container[0]}:pull").read().decode()
+    
+    token=json.loads(token)["token"]
+    
+    request=urllib.request.Request("https://index.docker.io/v2/1337kavin/piped-frontend/manifests/latest", headers={'Authorization':f"Bearer {token}"})
+    
+    request=urllib.request.urlopen(request).read().decode()
+    
+    request=json.loads(request)["fsLayers"]
+    
+    layers=[_["
+    
+    
+    print(layers)
 
+#Special functions
+if FUNCTION in ["import"]:
+    globals()[FUNCTION.title()]()
+    exit()
 NAME=List(NAME)
 for name in NAME:
     PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"

@@ -1,0 +1,7 @@
+container: Containerization tool written in Python
+
+To start, 
+1. make folder ~/Containers, and move container into a place in your $PATH
+2. Next, run "container init void"
+3. Download a Void Linux rootfs and move it into ~/Containers/void/diff
+4. Run "container init $CONTAINER
