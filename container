@@ -23,7 +23,6 @@ arguments=arguments[1:]
 NAME=[]
 flags=arguments
 TEMP=tempfile.gettempdir()
-PATTERN = re.compile(r'''((?:[^\:"']|"[^"]*"|'[^']*')+)''')
 SHELL=os.getenv('SHELL','bash')
 
 
@@ -57,6 +56,9 @@ def print_result(result):
         else:
             print(element)
 
+def split_by_char(string,char=':'):
+    PATTERN = re.compile(rf'''((?:[^\{char}"']|"[^"]*"|'[^']*')+)''')
+    return [_ for _ in list(PATTERN.split(string)) if _ not in ['', char]]
 def Shell(command,block=True):
     if block:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
@@ -125,7 +127,7 @@ class Container:
             return []
     
     def Mount(self,IN,OUT):
-        arrIN = [_ for _ in list(PATTERN.split(IN)) if _ not in ['', ':']]
+        arrIN = split_by_char(IN)
         
         os.makedirs(f"diff{OUT}",exist_ok=True)
         if not os.path.ismount(f"diff{OUT}"):
@@ -137,7 +139,10 @@ class Container:
                Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
 
     def Base(self,base):
-        self.base=base
+        
+        #Effectively make subsequent Bases a no-op
+        if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
+            self.base=base
 
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
@@ -295,8 +300,13 @@ if flags==[] and NAME==[]:
     flags+=["--all"]
 
 #Special functions -- they don't follow any normal rules
-def Import(_image=NAME[0],_container=NAME[1]):
+def Import(_image=None,_container=None):
     
+    if not _image:
+        image=NAME[0]
+    
+    if not _container:
+        container=NAME[1]
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
     image=_image
@@ -305,9 +315,9 @@ def Import(_image=NAME[0],_container=NAME[1]):
     #What registry is being used
     registry=''
     
-    if 'https://hub.docker.com/' in image:
+    if 'hub.docker.com/' in image:
         registry='docker'
-    elif 'https://quay.io' in image:
+    elif 'quay.io/' in image:
         registry='quay'
     else:
         registry='docker'
@@ -325,7 +335,7 @@ def Import(_image=NAME[0],_container=NAME[1]):
     if image.startswith('/'):
         image=image[1:]
         
-    image = [_ for _ in list(PATTERN.split(image)) if _ not in ['', ':']]
+    image = split_by_char(image)
     
     #Support Docker official images
     if registry=='docker':
@@ -344,10 +354,13 @@ def Import(_image=NAME[0],_container=NAME[1]):
     
     
     #Get right architecture
-    manifest_list=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
+    if registry=='docker':
+        manifest_list=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
+    elif registry=='quay':
+        manifest_list=urllib.request.Request(f"https://quay.io/v2/{image[0]}/manifests/{image[1]}", headers={"Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
     
     manifest_list=urllib.request.urlopen(manifest_list).read().decode()
-    
+
     architecture=platform.machine()
     
     #Handle some Linux distros that report aarch64 instead of amr64
@@ -381,7 +394,10 @@ def Import(_image=NAME[0],_container=NAME[1]):
 
     #Get information about layers
     
-    layers=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{digest}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
+    if registry=='docker':
+        layers=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{digest}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
+    elif registry=='quay':
+        layers=urllib.request.Request(f"https://quay.io/v2/{image[0]}/manifests/{digest}", headers={"Accept":"application/vnd.docker.distribution.manifest.v2+json"})
     
     
     layers=urllib.request.urlopen(layers).read().decode()
@@ -396,14 +412,18 @@ def Import(_image=NAME[0],_container=NAME[1]):
     
     
     #Special code for urlretrieve
-    opener = urllib.request.build_opener()
-    opener.addheaders = [('Authorization', f"Bearer {token}")]
-    urllib.request.install_opener(opener)
+    if registry=='docker':
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('Authorization', f"Bearer {token}")]
+        urllib.request.install_opener(opener)
     
     #Download layers
     for i in range(len(layers)):
-        urllib.request.urlretrieve(f"https://index.docker.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
-    
+        if registry=='docker':
+            urllib.request.urlretrieve(f"https://index.docker.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+        elif registry=='quay':
+            urllib.request.urlretrieve(f"https://quay.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+            
     #Initialize container
     Container(container,_flags=flags+['--no-edit']).Init()
     
@@ -415,9 +435,41 @@ def Import(_image=NAME[0],_container=NAME[1]):
     
     shutil.rmtree(temp_folder)
 
-
+#Convert Dockerfile to Containerfile
+def Convert():
+    IN=NAME[0]
+    #OUT=NAME[1]
+    
+    #Convert a line of a Dockerfile into a Container file
+    def docker_to_container(line):
+        line=[_ for _ in line.split(' ') if not _.startswith('--')]
+        
+        result=[]
+        if line[0]=='FROM':
+            result=["Base",f"({split_by_char(line[1])[0]})"]
+        elif line[0]=='RUN':
+            result=["Run",f"{' '.join(line[1:])}"]
+        elif line[0]=='WORKDIR':
+            result=["Workdir",f"{line[0]}"]
+        elif line[0]=='COPY':
+            result=["Copy",f"{line[1]},{line[2]}"]
+        else:
+            result=['','']
+        #Add quotes around each argument
+        #result[1]=[_.replace('"', r'\"').replace("'", r'\'') for _ in split_by_char(result[1],char=',')]
+        print(split_by_char(result[1],char=','))
+    with open(IN,'r') as f:
+        Dockerfile=f.read().replace("\\\n","\\")
+        
+    for line in Dockerfile.splitlines():
+        line=line.strip()
+        if not line.startswith('#') and line:
+            result=docker_to_container(line)
+            if result:
+                print(result)
+    exit()
 #If FUNCTION is one of the "special functions", do that
-if FUNCTION in ["import"]:
+if FUNCTION in ['import','convert']:
     globals()[FUNCTION.title()]()
     exit()
 
