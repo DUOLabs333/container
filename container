@@ -60,12 +60,12 @@ def split_by_char(string,char=':'):
     PATTERN = re.compile(rf'''((?:[^\{char}"']|"[^"]*"|'[^']*')+)''')
     return [_ for _ in list(PATTERN.split(string)) if _ not in ['', char]]
     
-def Shell(command,block=True,cwd=None):
+def Shell(command,block=True):
     if block:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True,cwd=cwd)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
         return process.communicate()[0]
     else:
-        process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True,cwd=cwd)
+        process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
 
 
 
@@ -89,7 +89,7 @@ class Container:
             self.unionopts=_unionopts
         
         if _env is None:
-            self.env='FOO=bar'
+            self.env=f"export {PATH}"
         else:
             self.env=_env
         #Whether we mounted dev, proc, etc.
@@ -123,7 +123,7 @@ class Container:
                     Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
 
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "export {self.env}; cd {self.workdir}; {command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "{self.env}; cd {self.workdir}; {command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         
@@ -155,11 +155,16 @@ class Container:
     
     def Workdir(self,work_dir):
         
+        if work_dir.endswith('/'):
+            work_dir=work_dir[:-1]
+            
         if work_dir.startswith("/"):
             self.workdir=work_dir
         else:    
             self.workdir+='/'+work_dir
         
+        #Remove repeated / in workdir
+        self.workdir=re.sub(r'(/)\1+', r'\1',self.workdir)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
     
     def Copy(self,src,dest):
@@ -174,6 +179,7 @@ class Container:
         #Relative directory
         if not src.startswith("/"):
             src=f"{SHELL_CWD}/{src}"
+            
         #Remove trailing slashes, in order to prevent gotchas with cp
         if src.endswith("/"):
             src=src[:-1]
@@ -188,7 +194,8 @@ class Container:
             Shell(f"cp -a {src} {dest}")
     
     def Env(self,env):
-        self.env+=' '+env
+        self.env+=f"; export {env}"
+        print(self.env)
         
     #Commands      
     def Start(self):
@@ -200,7 +207,7 @@ class Container:
         with open("container-compose.py") as f:
             code = compile(f.read(), 'container-compose.py', 'exec')
             exec(code,globals(),locals())
-        print(self.unionopts)
+        
         #Don't have to put Run() in container-compose.py just to start it
         Run()
         if "--only-chroot" in self.flags:
@@ -249,8 +256,10 @@ class Container:
     
     def Chroot(self):
         if self.flags==[] and ("Stopped" in self.Status()):
-            return [Container(self.container,self.flags+['--only-chroot'],self.unionopts).Start()]
-        os.system(f" PATH={PATH} sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged {SHELL}")
+            self.flags+=['--only-chroot']
+            return [self.Start()]
+            
+        os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.container}/merged {SHELL}")
     
     
     def List(self):
@@ -428,21 +437,19 @@ def Import(_image=None,_container=None):
         opener.addheaders = [('Authorization', f"Bearer {token}")]
         urllib.request.install_opener(opener)
     
+    #Initialize container
+    Container(container,_flags=flags+['--no-edit']).Init()
+    
     #Download layers
     for i in range(len(layers)):
         if registry=='docker':
             urllib.request.urlretrieve(f"https://index.docker.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
         elif registry=='quay':
             urllib.request.urlretrieve(f"https://quay.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
-            
-    #Initialize container
-    Container(container,_flags=flags+['--no-edit']).Init()
-    
-    #Extract to container
-    for tar in os.listdir(temp_folder):
-        tar = tarfile.open(f"{temp_folder}/{tar}")
-        tar.extractall(f"{ROOT}/{container}/diff")
-        tar.close()
+        
+        #Extract layer to container and remove it
+        Shell(f"tar -xf {temp_folder}/layer_{i}.tar.gz -C {ROOT}/{container}/diff")
+        os.remove(f"{temp_folder}/layer_{i}.tar.gz")
     
     shutil.rmtree(temp_folder)
 
@@ -460,6 +467,8 @@ def Convert():
             if not line[i].startswith("--"):
                 line=line[i:]
                 break
+        
+        line=list(filter(None,line))
         result=[]
         if COMMAND=='FROM':
             result=["Base",f"{split_by_char(line[0])[0]}"]
@@ -479,8 +488,8 @@ def Convert():
             result=['"'+result[_].replace("'", r'\'').replace('"', r'\"')+'"' if _!=0 else result[_] for _ in range(len(result))]
         
         return result[0]+f"({', '.join(result[1:])})"
-    #Move all bash line breaks to one line
         
+    #Move all bash line breaks to one line
     with open(IN,'r') as f:
         Dockerfile=f.read().replace("\\\n"," ")
     
@@ -500,7 +509,7 @@ if FUNCTION in ['import','convert']:
 #Else, it's one of the standard functions:
 NAME=List(NAME)
 for name in NAME:
-    PATH="$PATH:/bin:/usr/sbin:/sbin:/usr/bin"
+    PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
     
     BASE="void"
     UNIONOPTS="diff=RW"
