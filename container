@@ -24,7 +24,7 @@ NAME=[]
 flags=arguments
 TEMP=tempfile.gettempdir()
 SHELL=os.getenv('SHELL','bash')
-
+SHELL_CWD=os.environ.get("PWD")
 
 #Helper functions
 def List(Names):
@@ -59,12 +59,13 @@ def print_result(result):
 def split_by_char(string,char=':'):
     PATTERN = re.compile(rf'''((?:[^\{char}"']|"[^"]*"|'[^']*')+)''')
     return [_ for _ in list(PATTERN.split(string)) if _ not in ['', char]]
-def Shell(command,block=True):
+    
+def Shell(command,block=True,cwd=None):
     if block:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True)
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True,universal_newlines=True,cwd=cwd)
         return process.communicate()[0]
     else:
-        process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True)
+        process = subprocess.Popen(command, shell=True,stderr=subprocess.STDOUT,universal_newlines=True,cwd=cwd)
 
 
 
@@ -73,7 +74,7 @@ class ContainerDoesNotExist(Exception):
     pass
     
 class Container:
-    def __init__(self,_container,_flags=None,_unionopts=None,_workdir='/'):
+    def __init__(self,_container,_flags=None,_unionopts=None,_workdir='/',_env=None):
         self.container=_container
         if _flags is None:
             self.flags=flags
@@ -87,6 +88,10 @@ class Container:
         else:
             self.unionopts=_unionopts
         
+        if _env is None:
+            self.env='FOO=bar'
+        else:
+            self.env=_env
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
         
@@ -99,6 +104,7 @@ class Container:
     
     #Functions
     def Run(self,command="",block=False):
+        print(command)
         self.Base(self.base)
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
@@ -117,7 +123,7 @@ class Container:
                     Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
 
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "cd {self.workdir}; {command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
+        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "export {self.env}; cd {self.workdir}; {command}" > {TEMP}/container_{self.container}.log 2>&1""",block=block)
     
     def GetProc(self):
         
@@ -148,14 +154,15 @@ class Container:
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
     def Workdir(self,work_dir):
+        
         if work_dir.startswith("/"):
             self.workdir=work_dir
         else:    
             self.workdir+='/'+work_dir
-            
+        
+        os.makedirs(f"diff{self.workdir}",exist_ok=True)
     
     def Copy(self,src,dest):
-        
         #Relative directory
         if not dest.startswith("/"):
             dest=f"diff{self.workdir}/{dest}"
@@ -164,21 +171,25 @@ class Container:
         else:
             dest=f"diff{dest}"
         
+        #Relative directory
+        if not src.startswith("/"):
+            src=f"{SHELL_CWD}/{src}"
         #Remove trailing slashes, in order to prevent gotchas with cp
         if src.endswith("/"):
             src=src[:-1]
         if dest.endswith("/"):
             dest=dest[:-1]
-                
-                     
-        cp_error=Shell(f"cp -a {src} {dest}")
         
+        #print(f"cp -a {src} {dest}")                   
+        cp_error=Shell(f"cp -a {src} {dest}")
         if "cp: cannot create" in cp_error:
             #dest does not exist, so create its parent's folder
             os.makedirs(os.path.dirname(dest),exist_ok=True)
+            Shell(f"cp -a {src} {dest}")
+    
+    def Env(self,env):
+        self.env+=' '+env
         
-        Shell(f"cp -a {src} {dest}")
-
     #Commands      
     def Start(self):
         
@@ -189,7 +200,7 @@ class Container:
         with open("container-compose.py") as f:
             code = compile(f.read(), 'container-compose.py', 'exec')
             exec(code,globals(),locals())
-            
+        print(self.unionopts)
         #Don't have to put Run() in container-compose.py just to start it
         Run()
         if "--only-chroot" in self.flags:
@@ -438,37 +449,50 @@ def Import(_image=None,_container=None):
 #Convert Dockerfile to Containerfile
 def Convert():
     IN=NAME[0]
-    #OUT=NAME[1]
+    OUT=NAME[1]
     
     #Convert a line of a Dockerfile into a Container file
     def docker_to_container(line):
-        line=[_ for _ in line.split(' ') if not _.startswith('--')]
-        
+        COMMAND=line.split(' ')[0]
+        line=line.split(' ')[1:]
+        #Remove flags from line
+        for i in range(len(line)):
+            if not line[i].startswith("--"):
+                line=line[i:]
+                break
         result=[]
-        if line[0]=='FROM':
-            result=["Base",f"({split_by_char(line[1])[0]})"]
-        elif line[0]=='RUN':
-            result=["Run",f"{' '.join(line[1:])}"]
-        elif line[0]=='WORKDIR':
+        if COMMAND=='FROM':
+            result=["Base",f"{split_by_char(line[0])[0]}"]
+        elif COMMAND=='RUN':
+            result=["Run",f"{' '.join(line)}"]
+        elif COMMAND=='WORKDIR':
             result=["Workdir",f"{line[0]}"]
-        elif line[0]=='COPY':
-            result=["Copy",f"{line[1]},{line[2]}"]
+        elif COMMAND=='COPY':
+            result=["Copy",f"{line[0]}",f"{line[1]}"]
+        elif COMMAND=='ENV':
+            result=["Env",f"{' '.join(line)}"]
         else:
             result=['','']
-        #Add quotes around each argument
-        #result[1]=[_.replace('"', r'\"').replace("'", r'\'') for _ in split_by_char(result[1],char=',')]
-        print(split_by_char(result[1],char=','))
-    with open(IN,'r') as f:
-        Dockerfile=f.read().replace("\\\n","\\")
         
-    for line in Dockerfile.splitlines():
-        line=line.strip()
-        if not line.startswith('#') and line:
-            result=docker_to_container(line)
-            if result:
-                print(result)
-    exit()
-#If FUNCTION is one of the "special functions", do that
+        #Escape all strings because of Python syntax
+        if ''.join(result):
+            result=['"'+result[_].replace("'", r'\'').replace('"', r'\"')+'"' if _!=0 else result[_] for _ in range(len(result))]
+        
+        return result[0]+f"({', '.join(result[1:])})"
+    #Move all bash line breaks to one line
+        
+    with open(IN,'r') as f:
+        Dockerfile=f.read().replace("\\\n"," ")
+    
+    with open(OUT,'w') as f:    
+        for line in Dockerfile.splitlines():
+            line=line.strip()
+            if not line.startswith('#') and line:
+                result=docker_to_container(line)
+                if result!="()":
+                    f.write(result+"\n")
+
+#If FUNCTION is one of the "special functions", do that function
 if FUNCTION in ['import','convert']:
     globals()[FUNCTION.title()]()
     exit()
@@ -486,11 +510,10 @@ for name in NAME:
     except ContainerDoesNotExist:
         print(f"Container {name} does not exist")
         continue
-    Run=container.Run
-    Layer=container.Layer
-    Mount=container.Mount
-    Base=container.Base
-    Copy=container.Copy
+    
+    #Export all container methods to be used in container-compose.py and Containerfile
+    for func in [func for func in dir(Container) if callable(getattr(Container, func)) and not func.startswith('__')]:
+        exec(f"{func} = container.{func}")
     
     result=list(flatten([getattr(container,FUNCTION.title())()]))
     print_result(result)
