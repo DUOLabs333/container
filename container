@@ -313,15 +313,16 @@ if flags==[] and NAME==[]:
 #Special functions -- they don't follow any normal rules
 def Import(_image=None,_container=None):
     
-    if not _image:
-        image=NAME[0]
-    
-    if not _container:
-        container=NAME[1]
-    #Make temp folder
-    temp_folder=tempfile.mkdtemp()
     image=_image
     container=_container
+    
+    if not image:
+        image=NAME[0]
+    if not container:
+        container=NAME[1]
+        
+    #Make temp folder
+    temp_folder=tempfile.mkdtemp()
     
     #What registry is being used
     registry=''
@@ -335,17 +336,17 @@ def Import(_image=None,_container=None):
     
     #Convert urls into a proper format:
     
-    #If there's more than one /, then this is a url
+    #If there's more than one /, then this is a url, and have to be extracted properly
     if image.count('/') >1:
         #There's no https, we should fix that
         if urllib.parse.urlparse(image).netloc=='':
             image='https://' + image
     
-    image=urllib.parse.urlparse(image).path
+        image=urllib.parse.urlparse(image).path
     
     if image.startswith('/'):
         image=image[1:]
-        
+    
     image = split_by_char(image)
     
     #Support Docker official images
@@ -362,8 +363,7 @@ def Import(_image=None,_container=None):
         token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
         
         token=json.loads(token)["token"]
-    
-    
+
     #Get right architecture
     if registry=='docker':
         manifest_list=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
