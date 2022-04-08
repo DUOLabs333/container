@@ -25,6 +25,7 @@ flags=arguments
 TEMP=tempfile.gettempdir()
 SHELL=os.getenv('SHELL','bash')
 SHELL_CWD=os.environ.get("PWD")
+PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
 
 #Helper functions
 def List(Names):
@@ -113,7 +114,6 @@ class Container:
             #Prevent merged from being mounted multiple times
             if not os.path.ismount("merged"):
                 Shell(f"unionfs -o allow_other,cow,hide_meta_files {self.unionopts} merged")
-        
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc","sys","run"]:
@@ -149,7 +149,7 @@ class Container:
         #Effectively make subsequent Bases a no-op
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.base=base
-
+            
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
@@ -207,7 +207,7 @@ class Container:
         with open("container-compose.py") as f:
             code = compile(f.read(), 'container-compose.py', 'exec')
             exec(code,globals(),locals())
-        
+        print(self.unionopts)
         #Don't have to put Run() in container-compose.py just to start it
         Run()
         if "--only-chroot" in self.flags:
@@ -216,7 +216,6 @@ class Container:
             return [self.Chroot()]
         
     def Build(self):
-        
         self.Stop()
         
         #Redefine Run for build=True
@@ -380,7 +379,7 @@ def Import(_image=None,_container=None):
         manifest_list=urllib.request.Request(f"https://quay.io/v2/{image[0]}/manifests/{image[1]}", headers={"Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
     
     manifest_list=urllib.request.urlopen(manifest_list).read().decode()
-
+    
     architecture=platform.machine()
     
     #Handle some Linux distros that report aarch64 instead of amr64
@@ -509,7 +508,6 @@ if FUNCTION in ['import','convert']:
 #Else, it's one of the standard functions:
 NAME=List(NAME)
 for name in NAME:
-    PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
     
     BASE="void"
     UNIONOPTS="diff=RW"
