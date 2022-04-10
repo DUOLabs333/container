@@ -22,6 +22,12 @@ Base(base) --- Make base the base container for the container
 
 Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted
 
+Copy(IN,OUT) --- copy file/directory from host to container
+
+Env(value) --- set environment variable in container
+
+Workdir(work_dir) --- set working dir of container
+
 Commands:
 
 start --- runs container-compose.py
