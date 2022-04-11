@@ -75,29 +75,34 @@ class ContainerDoesNotExist(Exception):
     pass
     
 class Container:
-    def __init__(self,_container,_flags=None,_unionopts=None,_workdir='/',_env=None):
+    def __init__(self,_container,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
         self.container=_container
-        if _flags is None:
+        if not _flags:
             self.flags=flags
         else:
             self.flags=_flags
             
         self.base="void"
         
-        if _unionopts is None:
+        if not _unionopts:
             self.unionopts="diff=RW"
         else:
             self.unionopts=_unionopts
         
-        if _env is None:
+        if not _env:
             self.env=f"export {PATH}"
         else:
             self.env=_env
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
-        
+           
+        if not _function:
+            self.function=FUNCTION
+        else:
+            self.function=_function
+            
         self.workdir=_workdir
-        if FUNCTION not in ["init","import"]:
+        if self.function not in ["init","import"]:
             if not os.path.isdir(f"{ROOT}/{self.container}"):
                  raise ContainerDoesNotExist()
                  return
@@ -105,7 +110,8 @@ class Container:
     
     #Functions
     def Run(self,command="",block=False):
-        print(command)
+        if command.strip()!="":
+            print(f"Command: {command}")
         self.Base(self.base)
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
@@ -306,6 +312,10 @@ class Container:
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.container}")
 
+#Populate arguments if it is empty
+if arguments==[]:
+    arguments=['--all']
+    
 #Initializing some important things
 #Flags go before the actual container names
 for i in range(len(arguments)):
@@ -313,10 +323,6 @@ for i in range(len(arguments)):
         flags=arguments[:i]
         NAME=arguments[i:]
         break
-
-#If there's only a function name
-if flags==[] and NAME==[]:
-    flags+=["--all"]
 
 #Special functions -- they don't follow any normal rules
 def Import(_image=None,_container=None):
