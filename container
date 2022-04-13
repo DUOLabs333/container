@@ -16,12 +16,17 @@ import platform
 ROOT=os.path.expanduser("~/Containers")
 
 arguments=sys.argv[1:]
-FUNCTION=arguments[0]
+
+try:
+    FUNCTION=arguments[0]
+except IndexError:
+    print("No function specified!")
+    exit()
 arguments=arguments[1:]
 
 #Populate arguments if it is empty
-if arguments==[]:
-    arguments=['--all']
+#if arguments==[]:
+#    arguments=['--all']
 
 NAMES=[]
 FLAGS=arguments
@@ -554,6 +559,11 @@ if FUNCTION in ['import','convert']:
 
 #Else, it's one of the standard functions:
 NAMES=List(NAMES)
+
+if NAMES==[]:
+    print("No containers specified!")
+    exit()
+
 for name in NAMES:
     
     BASE="void"
@@ -569,7 +579,11 @@ for name in NAMES:
     for func in [func for func in dir(Container) if callable(getattr(Container, func)) and not func.startswith('__')]:
         exec(f"{func} = container.{func}")
     
-    result=list(flatten([getattr(container,FUNCTION.title())()]))
+    try:
+        result=list(flatten([getattr(container,FUNCTION.title())()]))
+    except AttributeError:
+        print(f"Command {FUNCTION} doesn't exist!")
+        exit()
     print_result(result)
         
 
