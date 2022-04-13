@@ -147,7 +147,11 @@ class Container:
             command=f"lsof -Fp -w /tmp/container_{self.name}.lock | cut -c 2-"
         elif process=="auxiliary":
             command="lsof -Fp -w -- merged | cut -c 2-"
-        
+            
+        if process=="main":
+            if not os.path.isfile(f"{TEMPDIR}/container_{self.name}.lock"):
+                return []
+
         if process=="auxiliary":
             if not os.path.isdir("merged"):
                 return []
