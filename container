@@ -12,6 +12,8 @@ import json
 import tarfile
 from pprint import pprint
 import platform
+import threading
+import time
 
 ROOT=os.path.expanduser(os.getenv("CONTAINER_ROOT","~/Containers"))
 
@@ -173,8 +175,19 @@ class Container:
             else:
                Shell(f"bindfs {ROOT}/{arrIN[0]}/diff{arrIN[1]} diff{OUT}")
     
-    def Loop(command,delay=60):
-        Run(f'(while true; do "{command}"; sleep {delay}; done)')
+    def Loop(self,command,delay=60):
+        if isinstance(command,str):
+            def func():
+                while True:
+                    Run(command)
+                    time.sleep(delay)
+        else:
+            def func():
+                while True:  
+                    command()
+                    time.sleep(delay)
+        threading.Thread(target=func).start()
+        #Run(f'(while true; do "{command}"; sleep {delay}; done)')
         
     def Base(self,base):
         
