@@ -13,7 +13,7 @@ import tarfile
 from pprint import pprint
 import platform
 
-ROOT=os.path.expanduser("~/Containers")
+ROOT=os.path.expanduser(os.getenv("CONTAINER_ROOT","~/Containers"))
 
 arguments=sys.argv[1:]
 
@@ -48,7 +48,7 @@ def List(_names=None,_flags=None):
     else:
         names=_names
     
-    AllContainers=os.listdir(f"{ROOT}")
+    AllContainers=sorted(os.listdir(f"{ROOT}"))
     
     if "--started" in flags:
         names+=[_ for _ in AllContainers if "Started" in Container(_).Status() ]
