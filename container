@@ -246,6 +246,7 @@ class Container:
     def Start(self):
         
         self.Base(self.base)
+        
         if self.Status()=="Started":
             return f"Container {self.name} is already started"
         
@@ -262,7 +263,7 @@ class Container:
             exec(code,globals(),locals())
             
             #Don't have to put Run() in container-compose.py just to start it
-            Run()
+            self.Run()
             Shell("sleep infinity")
             exit()
         
@@ -334,7 +335,6 @@ class Container:
         if self.flags==[] and ("Stopped" in self.Status()):
             self.flags+=['--only-chroot']
             return [self.Start()]
-            
         os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.name}/merged {SHELL}")
     
     
