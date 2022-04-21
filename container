@@ -86,8 +86,6 @@ def Shell(command):
     return process.communicate()[0]
 
 
-
-
 class ContainerDoesNotExist(Exception):
     pass
     
@@ -119,6 +117,8 @@ class Container:
             self.function=_function
             
         self.workdir=_workdir
+        
+        
         if self.function not in ["init","import"]:
             if not os.path.isdir(f"{ROOT}/{self.name}"):
                  raise ContainerDoesNotExist()
@@ -145,7 +145,7 @@ class Container:
                     #Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
                     Shell(f"sudo mount --rbind /{dir} merged/{dir}")
             self.mounted_special=True
-        Shell(f""" PATH={PATH} sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "{self.env}; cd {self.workdir}; {command}" > {TEMPDIR}/container_{self.name}.log 2>&1""")
+        Shell(f""" sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "{self.env}; cd {self.workdir}; {command}" >> {TEMPDIR}/container_{self.name}.log 2>&1""")
     
     def GetProc(self,process="auxiliary"):
         if process=="main":
@@ -266,9 +266,8 @@ class Container:
             self.Run()
             Shell("sleep infinity")
             exit()
-        
         if "--only-chroot" in self.flags:
-            return [ self.Chroot(), self.Stop()]
+            return [self.Chroot(), self.Stop()]
         elif "--and-chroot" in self.flags:
             return [self.Chroot()]
         
