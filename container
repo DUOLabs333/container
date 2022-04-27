@@ -383,6 +383,9 @@ class Container:
     def Delete(self):
         self.Stop()
         os.system(f"sudo rm -rf {ROOT}/{self.name}")
+    
+    def Watch(self):
+        Shell(f"tail -f {TEMPDIR}/container_{self.name}.log")
 
 
    #Initializing some important things
