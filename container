@@ -127,8 +127,9 @@ class Container:
     
     #Functions
     def Run(self,command=""):
-        if command.strip()!="":
-            print(f"Command: {command}")
+        if self.function=="build":
+            if command.strip()!="":
+                print(f"Command: {command}")
         self.Base(self.base)
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
@@ -314,6 +315,7 @@ class Container:
 
         for dir in Shell(f"mount | awk '$0=$3' | grep {ROOT}/{self.name}/diff").splitlines():
              Shell(f"umount -l {dir}")
+        Shell("umount -l merged")
         try:
            os.remove(f"{TEMPDIR}/container_{self.name}.log")
         except FileNotFoundError:
@@ -323,9 +325,6 @@ class Container:
            os.remove(f"{TEMPDIR}/container_{self.name}.lock")
         except FileNotFoundError:
             pass
-
-        
-        Shell("umount -l merged")
 
     def Restart(self):
         return [self.Stop(),self.Start()]
