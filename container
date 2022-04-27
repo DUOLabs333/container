@@ -385,7 +385,7 @@ class Container:
         os.system(f"sudo rm -rf {ROOT}/{self.name}")
     
     def Watch(self):
-        Shell(f"tail -f {TEMPDIR}/container_{self.name}.log")
+        os.system(f"tail -f {TEMPDIR}/container_{self.name}.log")
 
 
    #Initializing some important things
