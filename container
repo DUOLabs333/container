@@ -148,7 +148,7 @@ class Container:
             self.mounted_special=True
             
         #Print command to file
-        Shell(f"echo Command: {command} >> {TEMPDIR}/container_{self.name}.log")
+        Shell(f"echo 'Command: {command}' >> {TEMPDIR}/container_{self.name}.log")
         Shell(f""" sudo nohup chroot --userspec=$(id -u):$(id -g) merged {SHELL} -c "{self.env}; cd {self.workdir}; {command}" >> {TEMPDIR}/container_{self.name}.log 2>&1""")
     
     def GetProc(self,process="auxiliary"):
