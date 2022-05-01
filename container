@@ -151,13 +151,14 @@ class Container:
             
         #Print command to file
         with open(f"{TEMPDIR}/container_{self.name}.log","a+") as f:
-            f.write(f"Command: {command}")
+            f.write(f"Command: {command}\n")
+            f.flush()
             Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=f)
             
     
     def Ps(self,process="auxiliary"):
         if process=="main":
-            command=["lsof","-Fp","-w",f"/tmp/container_{self.name}.lock"]
+            command=["lsof","-Fp","-w",f"{TEMPDIR}/container_{self.name}.lock"]
         elif process=="auxiliary":
             command=["lsof","-Fp","-w","--","merged"]
             
@@ -204,7 +205,13 @@ class Container:
         #Effectively make subsequent Bases a no-op
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.base=base
-            
+    
+    def Wait(self,delay=None):
+        if not delay:
+            signal.pause()
+        else:
+            time.sleep(int(delay))
+
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
@@ -274,7 +281,7 @@ class Container:
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
-            signal.pause()
+            self.Wait()
             exit()
         if "--only-chroot" in self.flags:
             return [self.Chroot(), self.Stop()]
@@ -304,7 +311,7 @@ class Container:
         #Kill all files under container
         for pid in self.Ps("auxiliary"):
             try:
-                os.kill(pid,signal.SIGKILL)
+                os.kill(pid,signal.SIGTERM)
                 try:
                     os.waitpid(pid,0)
                 except:
@@ -371,9 +378,9 @@ class Container:
 
     def Edit(self):
         if '--build' in self.flags:
-            os.system(f"$EDITOR {ROOT}/{self.name}/Containerfile")
+            Shell([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/Containerfile"],stdout=None)
         else:
-            os.system(f"$EDITOR {ROOT}/{self.name}/container-compose.py")
+            Shell([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/container-compose.py"],stdout=None)
 
     def Status(self):
         if os.path.isfile(f"{TEMPDIR}/container_{self.name}.log"):
