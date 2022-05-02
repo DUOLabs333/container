@@ -168,10 +168,12 @@ class Container:
             #Pipe output to variable
             if pipe:
                 stdout=subprocess.PIPE
+                stderr=subprocess.DEVNULL
             else:
                 #Print output to file
                 stdout=log_file
-            return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout)
+                stderr=subprocess.STDOUT
+            return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process="auxiliary"):
