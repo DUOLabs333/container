@@ -1,0 +1,190 @@
+#!/usr/bin/env python
+
+#Special functions -- they don't follow any normal rules
+def Import(_image=None,_container=None):
+    
+    image=_image
+    container=_container
+    
+    if not image:
+        image=NAME[0]
+    if not container:
+        container=NAME[1]
+        
+    #Make temp folder
+    temp_folder=tempfile.mkdtemp()
+    
+    #What registry is being used
+    registry=''
+    
+    if 'hub.docker.com/' in image:
+        registry='docker'
+    elif 'quay.io/' in image:
+        registry='quay'
+    else:
+        registry='docker'
+    
+    #Convert urls into a proper format:
+    
+    #If there's more than one /, then this is a url, and have to be extracted properly
+    if image.count('/') >1:
+        #There's no https, we should fix that
+        if urllib.parse.urlparse(image).netloc=='':
+            image='https://' + image
+    
+        image=urllib.parse.urlparse(image).path
+    
+    if image.startswith('/'):
+        image=image[1:]
+    
+    image = split_by_char(image)
+    
+    #Support Docker official images
+    if registry=='docker':
+        if '/' not in image[0]:
+            image[0]='library/'+image[0]
+        
+    if len(image)==1:
+        image.append('latest')
+        
+    #Get token
+    
+    if registry=='docker':
+        token=urllib.request.urlopen(f"https://auth.docker.io/token?service=registry.docker.io&scope=repository:{image[0]}:pull").read().decode()
+        
+        token=json.loads(token)["token"]
+
+    #Get right architecture
+    if registry=='docker':
+        manifest_list=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{image[1]}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
+    elif registry=='quay':
+        manifest_list=urllib.request.Request(f"https://quay.io/v2/{image[0]}/manifests/{image[1]}", headers={"Accept":"application/vnd.docker.distribution.manifest.list.v2+json"})
+    
+    manifest_list=urllib.request.urlopen(manifest_list).read().decode()
+    
+    architecture=platform.machine()
+    
+    #Handle some Linux distros that report aarch64 instead of amr64
+    if architecture=='aarch64':
+        architecture=['arm64']
+        
+    #Handle the arm* family
+    elif architecture.startswith('arm'):
+        
+        #Handle armv6, armv7l, etc.
+        if 'v' in architecture:
+            architecture=architecture.split('v')
+            architecture[1]='v'+architecture[1]
+        else:
+            architecture=[architecture]
+    else:
+        architecture=[architecture]
+        
+    manifest_list=json.loads(manifest_list)['manifests']
+    
+    for manifest in manifest_list:
+        if manifest['platform']['architecture']==architecture[0]:
+            #Deal with armv* family
+            if len(architecture)==2:
+                if manifest['platform']['variant']==architecture[1]:
+                    digest=manifest['digest']
+                    break
+            else:
+                digest=manifest['digest']
+                break
+
+    #Get information about layers
+    
+    if registry=='docker':
+        layers=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{digest}", headers={'Authorization':f"Bearer {token}","Accept":"application/vnd.docker.distribution.manifest.v2+json"})
+    elif registry=='quay':
+        layers=urllib.request.Request(f"https://quay.io/v2/{image[0]}/manifests/{digest}", headers={"Accept":"application/vnd.docker.distribution.manifest.v2+json"})
+    
+    
+    layers=urllib.request.urlopen(layers).read().decode()
+    
+    #config=json.loads(layers)['config']
+    #config=urllib.request.Request(f"https://index.docker.io/v2/{image[0]}/manifests/{config['digest']}", headers={'Authorization':f"Bearer {token}","Accept":config['mediaType']})
+    #config=urllib.request.urlopen(config).read().decode()
+    
+    layers=json.loads(layers)["layers"]
+    
+    layers=[_["digest"] for _ in layers]
+    
+    
+    #Special code for urlretrieve
+    if registry=='docker':
+        opener = urllib.request.build_opener()
+        opener.addheaders = [('Authorization', f"Bearer {token}")]
+        urllib.request.install_opener(opener)
+    
+    #Initialize container
+    Container(container,_flags=flags+['--no-edit']).Init()
+    
+    #Download layers
+    for i in range(len(layers)):
+        if registry=='docker':
+            urllib.request.urlretrieve(f"https://index.docker.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+        elif registry=='quay':
+            urllib.request.urlretrieve(f"https://quay.io/v2/{image[0]}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
+        
+        #Extract layer to container and remove it
+        Shell(["tar","-xf",f"{temp_folder}/layer_{i}.tar.gz","-C",f"{ROOT}/{container}/diff"])
+        os.remove(f"{temp_folder}/layer_{i}.tar.gz")
+    
+    shutil.rmtree(temp_folder)
+
+#Convert Dockerfile to Containerfile
+def Convert():
+    IN=NAME[0]
+    OUT=NAME[1]
+    
+    #Convert a line of a Dockerfile into a Container file
+    def docker_to_container(line):
+        COMMAND=line.split(' ')[0]
+        line=line.split(' ')[1:]
+        #Remove flags from line
+        for i in range(len(line)):
+            if not line[i].startswith("--"):
+                line=line[i:]
+                break
+        
+        line=list(filter(None,line))
+        result=[]
+        if COMMAND=='FROM':
+            result=["Base",f"{split_by_char(line[0])[0]}"]
+        elif COMMAND=='RUN':
+            result=["Run",f"{' '.join(line)}"]
+        elif COMMAND=='WORKDIR':
+            result=["Workdir",f"{line[0]}"]
+        elif COMMAND=='COPY':
+            result=["Copy",f"{line[0]}",f"{line[1]}"]
+        elif COMMAND=='ENV':
+            result=["Env",f"{' '.join(line)}"]
+        else:
+            result=['','']
+        
+        #Escape all strings because of Python syntax
+        if ''.join(result):
+            result=['"'+result[_].replace("'", r'\'').replace('"', r'\"')+'"' if _!=0 else result[_] for _ in range(len(result))]
+        
+        return result[0]+f"({', '.join(result[1:])})"
+        
+    #Move all bash line breaks to one line
+    with open(IN,'r') as f:
+        Dockerfile=f.read().replace("\\\n"," ")
+    
+    with open(OUT,'w') as f:    
+        for line in Dockerfile.splitlines():
+            line=line.strip()
+            if not line.startswith('#') and line:
+                result=docker_to_container(line)
+                if result!="()":
+                    f.write(result+"\n")
+
+#If FUNCTION is one of the "special functions", do that function
+if FUNCTION in ['import','convert']:
+    globals()[FUNCTION.title()]()
+    exit()
+
+#Else, it's one of the standard functions:
