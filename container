@@ -80,7 +80,18 @@ def print_result(result):
 def split_by_char(string,char=':'):
     PATTERN = re.compile(rf'''((?:[^\{char}"']|"[^"]*"|'[^']*')+)''')
     return [_ for _ in list(PATTERN.split(string)) if _ not in ['', char]]
-    
+
+def convert_colon_string_to_directory(string):
+    string=split_by_char(string)
+    if string[0]=="root":
+        string=string[1]
+    elif len(string)==1:
+        string=string[0]
+    else:
+        string=f"{ROOT}/{string[0]}/diff{string[1]}"
+    string=os.path.expanduser(string)
+    return string
+
 def Shell(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT):
     process = subprocess.run(command, stdout=stdout, stderr=stderr,universal_newlines=True)
     if stdout==subprocess.PIPE:
@@ -173,19 +184,38 @@ class Container:
         return list(map(int,processes))
     
     def Mount(self,IN,OUT):
-        arrIN = split_by_char(IN)
-        
         os.makedirs(f"diff{OUT}",exist_ok=True)
         if not os.path.ismount(f"diff{OUT}"):
-            if arrIN[0]=="root":
-                IN=arrIN[1]
-            elif len(arrIN)==1:
-                IN=arrIN[0]
-            else:
-                IN=f"{ROOT}/{arrIN[0]}/diff{arrIN[1]}"
-            IN=os.path.expanduser(IN)
+            IN=convert_colon_string_to_directory(IN)
             Shell(["bindfs",IN,f"diff{OUT}"])
     
+    def Copy(self,src,dest):
+        #Relative directory
+        if not dest.startswith("/"):
+            dest=f"diff{self.workdir}/{dest}"
+        
+        #Absolute directory
+        else:
+            dest=f"diff{dest}"
+        
+        src=convert_colon_string_to_directory(src)
+        #Relative directory
+        if not src.startswith("/"):
+            src=f"{SHELL_CWD}/{src}"
+            
+        #Remove trailing slashes, in order to prevent gotchas with cp
+        if src.endswith("/"):
+            src=src[:-1]
+        if dest.endswith("/"):
+            dest=dest[:-1]
+        
+        #print(f"cp -a {src} {dest}")                   
+        cp_error=Shell(["cp","-a",f"{src}",f"{dest}"])
+        if "cp: cannot create" in cp_error:
+            #dest does not exist, so create its parent's folder
+            os.makedirs(os.path.dirname(dest),exist_ok=True)
+            Shell(["cp","-a",f"{src}",f"{dest}"])
+
     def Loop(self,command,delay=60):
         if isinstance(command,str):
             def func():
@@ -230,31 +260,7 @@ class Container:
         self.workdir=re.sub(r'(/)\1+', r'\1',self.workdir)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
     
-    def Copy(self,src,dest):
-        #Relative directory
-        if not dest.startswith("/"):
-            dest=f"diff{self.workdir}/{dest}"
-        
-        #Absolute directory
-        else:
-            dest=f"diff{dest}"
-        
-        #Relative directory
-        if not src.startswith("/"):
-            src=f"{SHELL_CWD}/{src}"
-            
-        #Remove trailing slashes, in order to prevent gotchas with cp
-        if src.endswith("/"):
-            src=src[:-1]
-        if dest.endswith("/"):
-            dest=dest[:-1]
-        
-        #print(f"cp -a {src} {dest}")                   
-        cp_error=Shell(["cp","-a",f"{src}",f"{dest}"])
-        if "cp: cannot create" in cp_error:
-            #dest does not exist, so create its parent's folder
-            os.makedirs(os.path.dirname(dest),exist_ok=True)
-            Shell(["cp","-a",f"{src}",f"{dest}"])
+    
     
     def Env(self,env):
         self.env+=f"; export {env}"
