@@ -161,7 +161,7 @@ class Container:
             self.mounted_special=True
             
         
-        with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_gile:
+        with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_file:
             log_file.write(f"Command: {command}\n")
             log_file.flush()
             
