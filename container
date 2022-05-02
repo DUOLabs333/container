@@ -137,7 +137,7 @@ class Container:
             os.chdir(f"{ROOT}/{self.name}")
     
     #Functions
-    def Run(self,command=""):
+    def Run(self,command="",pipe=False):
         if self.function=="build":
             if command.strip()!="":
                 print(f"Command: {command}")
@@ -160,11 +160,18 @@ class Container:
                    
             self.mounted_special=True
             
-        #Print command to file
-        with open(f"{TEMPDIR}/container_{self.name}.log","a+") as f:
-            f.write(f"Command: {command}\n")
-            f.flush()
-            Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=f)
+        
+        with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_gile:
+            log_file.write(f"Command: {command}\n")
+            log_file.flush()
+            
+            #Pipe output to variable
+            if pipe:
+                stdout=subprocess.PIPE
+            else:
+                #Print output to file
+                stdout=log_file
+            return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout)
             
     
     def Ps(self,process="auxiliary"):
