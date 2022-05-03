@@ -169,8 +169,8 @@ class Container:
             if pipe:
                 stdout=subprocess.PIPE
                 stderr=subprocess.DEVNULL
+            #Print output to file
             else:
-                #Print output to file
                 stdout=log_file
                 stderr=subprocess.STDOUT
             return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
