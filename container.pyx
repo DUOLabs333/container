@@ -6,7 +6,7 @@ import os
 import threading
 import time
 
-< include "~/Repos/duolabs_utils/utils.pyx" >
+< include utils.pyx >
 
 CLASS_NAME="Container"
 
