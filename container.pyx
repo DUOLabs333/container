@@ -8,21 +8,23 @@ import time
 
 < include utils.pyx >
 
+import utils
 CLASS_NAME="Container"
 
-ROOT=utils.get_root_directory(CLASS_NAME)
+utils.ROOT=utils.get_root_directory(CLASS_NAME)
 
-NAMES,FLAGS,FUNCTION=utils.extract_arguments()
+utils.NAMES,utils.FLAGS,utils.FUNCTION=utils.extract_arguments()
 
 TEMPDIR=utils.TEMPDIR
 
+ROOT=utils.ROOT
 SHELL=os.getenv('SHELL','bash')
 SHELL_CWD=os.environ.get("PWD")
 PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
 
 #Helper functions
 def list_containers(*args, **kwargs):
-    return utils.list_items_in_root(*args, FLAGS,CLASS_NAME,**kwargs)    
+    return utils.list_items_in_root(*args, utils.FLAGS,CLASS_NAME,**kwargs)    
 
 def flatten(*args, **kwargs):
     return utils.flatten_list(*args, **kwargs)
@@ -302,7 +304,7 @@ class Container:
         self.Class.watch()
 
 
-NAMES=list_containers(NAMES)
+NAMES=list_containers(utils.NAMES)
 
 for name in NAMES:
     
@@ -310,13 +312,13 @@ for name in NAMES:
     UNIONOPTS="diff=RW"
     
     try:
-        container=Container(name,FLAGS,UNIONOPTS)
+        container=Container(name,utils.FLAGS,UNIONOPTS)
     except ContainerDoesNotExist:
         print(f"Container {name} does not exist")
         continue
-    
-    utils.export_methods_globally(CLASS_NAME.lower())
-    result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
+        
+    utils.export_methods_globally(CLASS_NAME.lower(),globals())
+    result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),utils.FUNCTION)
     
     print_result(result)
         
