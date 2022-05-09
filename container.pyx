@@ -11,13 +11,15 @@ import time
 import utils
 CLASS_NAME="Container"
 
-utils.ROOT=utils.get_root_directory(CLASS_NAME)
+utils.ROOT=ROOT=utils.get_root_directory(CLASS_NAME)
+utils.TEMPDIR=TEMPDIR=utils.get_tempdir()
 
-utils.NAMES,utils.FLAGS,utils.FUNCTION=utils.extract_arguments()
+NAMES,FLAGS,FUNCTION=utils.extract_arguments()
 
-TEMPDIR=utils.TEMPDIR
+utils.NAMES=NAMES
+utils.FLAGS=FLAGS
+utils.ROOT=ROOT
 
-ROOT=utils.ROOT
 SHELL=os.getenv('SHELL','bash')
 SHELL_CWD=os.environ.get("PWD")
 PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
@@ -303,7 +305,7 @@ class Container:
     def Watch(self):
         self.Class.watch()
 
-
+exec(f"utils.{CLASS_NAME}={CLASS_NAME}")
 NAMES=list_containers(utils.NAMES)
 
 for name in NAMES:
@@ -318,7 +320,7 @@ for name in NAMES:
         continue
         
     utils.export_methods_globally(CLASS_NAME.lower(),globals())
-    result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),utils.FUNCTION)
+    result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
     
     print_result(result)
         
