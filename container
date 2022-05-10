@@ -27,6 +27,7 @@ NAMES,FLAGS,FUNCTION=utils.extract_arguments()
 utils.NAMES=NAMES
 utils.FLAGS=FLAGS
 utils.ROOT=ROOT
+utils.FUNCTION=FUNCTION
 
 SHELL=os.getenv('SHELL','bash')
 SHELL_CWD=os.environ.get("PWD")
