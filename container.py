@@ -6,7 +6,7 @@ import os
 import threading
 import time
 
-# < include utils.pyx >
+# < include utils.py >
 
 import utils
 CLASS_NAME="Container"
