@@ -1,18 +1,10 @@
 #!/usr/bin/env python
-
 import subprocess
-
 import re
-
 import sys
-
 import os
-
 import threading
-
 import time
-
-
 
 
 
@@ -21,643 +13,324 @@ import sys
 import base64
 utils_module=types.ModuleType("utils")
 #setattr(utils_module,"__file__",__file__)
-exec(base64.b64decode(b'aW1wb3J0IHN1YnByb2Nlc3MKCmltcG9ydCByZQoKaW1wb3J0IHRlbXBmaWxlCgppbXBvcnQgb3MKCmltcG9ydCBwYXRobGliCgppbXBvcnQgc2lnbmFsIAoKaW1wb3J0IHRpbWUKCmltcG9ydCBzeXMKCmltcG9ydCB0eXBpbmcKCmltcG9ydCBzaHV0aWwKCgoKZGVmIGdldF90ZW1wZGlyKCk6CgogICAgaWYgb3MudW5hbWUoKS5zeXNuYW1lPT0iRGFyd2luIjoKCiAgICAgICAgcmV0dXJuICIvdG1wIgoKICAgIGVsc2U6CgogICAgICAgIHJldHVybiB0ZW1wZmlsZS5nZXR0ZW1wZGlyKCkKCiAgICAKCgoKCgoKCmNsYXNzIERvZXNOb3RFeGlzdChFeGNlcHRpb24pOgoKICAgIHBhc3MKCgoKZGVmIGdldF92YWx1ZSh2YXJpYWJsZSxkZWZhdWx0KToKCglpZiBub3QgdmFyaWFibGU6CgoJCXJldHVybiBkZWZhdWx0CgoJZWxzZToKCgkJcmV0dXJuIHZhcmlhYmxlCgoKCmRlZiBnZXRfcm9vdF9kaXJlY3RvcnkoY2xhc3NfbmFtZSxyb290X3ZhcmlhYmxlPU5vbmUsZGVmYXVsdF92YWx1ZT1Ob25lKToKCiAgICByb290X3ZhcmlhYmxlPWdldF92YWx1ZShyb290X3ZhcmlhYmxlLGYie2NsYXNzX25hbWUudXBwZXIoKX1fUk9PVCIpCgogICAgZGVmYXVsdF92YWx1ZT1nZXRfdmFsdWUoZGVmYXVsdF92YWx1ZSxmIntvcy5lbnZpcm9uWydIT01FJ119L3tjbGFzc19uYW1lLnRpdGxlKCl9cyIpCgogICAgcmV0dXJuIG9zLnBhdGguZXhwYW5kdXNlcihvcy5nZXRlbnYocm9vdF92YXJpYWJsZSxkZWZhdWx0X3ZhbHVlKSkKCiAgICAKClJPT1Q9Tm9uZQoKTkFNRVM9Tm9uZQoKRkxBR1M9Tm9uZQoKRlVOQ1RJT049Tm9uZQoKVEVNUERJUj1Ob25lCgoKCmRlZiBsaXN0X2l0ZW1zX2luX3Jvb3QobmFtZXMsZmxhZ3MsY2xhc3NfbmFtZSk6CgogICAgQWxsPVtfIGZvciBfIGluIHNvcnRlZChvcy5saXN0ZGlyKFJPT1QpKSBpZiBub3QgXy5zdGFydHN3aXRoKCcuJykgXQoKICAgIGlmICItLXN0YXJ0ZWQiIGluIGZsYWdzOgoKICAgICAgICBuYW1lcys9W18gZm9yIF8gaW4gQWxsIGlmICJTdGFydGVkIiBpbiBldmFsKGYie2NsYXNzX25hbWV9KF8pLlN0YXR1cygpIikgXQoKICAgICAgICBmbGFncy5yZW1vdmUoIi0tc3RhcnRlZCIpCgogICAgaWYgIi0tc3RvcHBlZCIgaW4gZmxhZ3M6CgogICAgICAgIG5hbWVzKz1bXyBmb3IgXyBpbiBBbGwgaWYgIlN0b3BwZWQiIGluIGV2YWwoZiJ7Y2xhc3NfbmFtZX0oXykuU3RhdHVzKCkiKSBdCgogICAgICAgIGZsYWdzLnJlbW92ZSgiLS1zdG9wcGVkIikKCiAgICBpZiAiLS1lbmFibGVkIiBpbiBmbGFnczoKCiAgICAgICAgbmFtZXMrPVtfIGZvciBfIGluIEFsbCBpZiAiRW5hYmxlZCIgaW4gZXZhbChmIntjbGFzc19uYW1lfShfKS5TdGF0dXMoKSIpIF0KCiAgICAgICAgZmxhZ3MucmVtb3ZlKCItLWVuYWJsZWQiKQoKICAgIAoKICAgIGlmICItLWRpc2FibGVkIiBpbiBmbGFnczoKCiAgICAgICAgbmFtZXMrPVtfIGZvciBfIGluIEFsbCBpZiAiRGlzYWJsZWQiIGluIGV2YWwoZiJ7Y2xhc3NfbmFtZX0oXykuU3RhdHVzKCkiKSBdCgogICAgICAgIGZsYWdzLnJlbW92ZSgiLS1kaXNhYmxlZCIpCgoKCiAgICBpZiAiLS1hbGwiIGluIGZsYWdzOgoKICAgICAgICBuYW1lcys9QWxsCgogICAgICAgIGZsYWdzLnJlbW92ZSgiLS1hbGwiKQoKICAgIGlmIG5hbWVzPT1bXToKCiAgICAgICAgcHJpbnQoZiJObyB7Y2xhc3NfbmFtZX1zIHNwZWNpZmllZCEiKQoKICAgICAgICBleGl0KCkKCiAgICByZXR1cm4gbmFtZXMKCgoKZGVmIGZsYXR0ZW5fbGlzdChpdGVtcyk6CgogICAgIiIiWWllbGQgaXRlbXMgZnJvbSBhbnkgbmVzdGVkIGl0ZXJhYmxlLiIiIgoKICAgIGZvciB4IGluIGl0ZW1zOgoKICAgICAgICBpZiBpc2luc3RhbmNlKHgsIHR5cGluZy5JdGVyYWJsZSkgYW5kIG5vdCBpc2luc3RhbmNlKHgsIChzdHIsIGJ5dGVzKSk6CgogICAgICAgICAgICBmb3Igc3ViX3ggaW4gZmxhdHRlbl9saXN0KHgpOgoKICAgICAgICAgICAgICAgIHlpZWxkIHN1Yl94CgogICAgICAgIGVsc2U6CgogICAgICAgICAgICB5aWVsZCB4CgoKCmRlZiBwcmludF9saXN0KGwpOgoKICAgIGZvciBlbGVtZW50IGluIGw6CgogICAgICAgIGlmIGVsZW1lbnQgaXMgTm9uZToKCiAgICAgICAgICAgIHByaW50KGVuZD0nJykKCiAgICAgICAgZWxzZToKCiAgICAgICAgICAgIHByaW50KGVsZW1lbnQpCgoKCmRlZiBzcGxpdF9zdHJpbmdfYnlfY2hhcihzdHJpbmcsY2hhcj0nOicpOgoKICAgIFBBVFRFUk4gPSByZS5jb21waWxlKHJmJycnKCg/OlteXHtjaGFyfSInXXwiW14iXSoifCdbXiddKicpKyknJycpCgogICAgcmV0dXJuIFtfIGZvciBfIGluIGxpc3QoUEFUVEVSTi5zcGxpdChzdHJpbmcpKSBpZiBfIG5vdCBpbiBbJycsIGNoYXJdXQoKCgoKCmRlZiBzaGVsbF9jb21tYW5kKGNvbW1hbmQsc3Rkb3V0PXN1YnByb2Nlc3MuUElQRSxzdGRlcnI9c3VicHJvY2Vzcy5TVERPVVQsYXJiaXRyYXJ5PUZhbHNlLGJsb2NrPVRydWUpOgoKICAgIHByb2Nlc3MgPSBzdWJwcm9jZXNzLlBvcGVuKGNvbW1hbmQsIHN0ZG91dD1zdGRvdXQsIHN0ZGVycj1zdGRlcnIsdW5pdmVyc2FsX25ld2xpbmVzPVRydWUsc2hlbGw9YXJiaXRyYXJ5KQoKICAgIGlmIGJsb2NrOgoKICAgICAgICByZXR1cm4gcHJvY2Vzcy5jb21tdW5pY2F0ZSgpWzBdCgoKCgoKCgoKCmRlZiBleHRyYWN0X2FyZ3VtZW50cygpOgoKICAgIGFyZ3VtZW50cz1zeXMuYXJndlsxOl0KCiAgICB0cnk6CgogICAgICAgIEZVTkNUSU9OPWFyZ3VtZW50c1swXQoKICAgIGV4Y2VwdCBJbmRleEVycm9yOgoKICAgICAgICBwcmludCgiTm8gZnVuY3Rpb24gc3BlY2lmaWVkISIpCgogICAgICAgIGV4aXQoKQoKICAgIGFyZ3VtZW50cz1hcmd1bWVudHNbMTpdCgogICAgCgogICAgTkFNRVM9W10KCiAgICBGTEFHUz1hcmd1bWVudHMKCiAgICBmb3IgaSBpbiByYW5nZShsZW4oYXJndW1lbnRzKSk6CgogICAgICAgIGlmIG5vdCBhcmd1bWVudHNbaV0uc3RhcnRzd2l0aCgiLS0iKToKCiAgICAgICAgICAgIEZMQUdTPWFyZ3VtZW50c1s6aV0KCiAgICAgICAgICAgIE5BTUVTPWFyZ3VtZW50c1tpOl0KCiAgICAgICAgICAgIGJyZWFrCgogICAgcmV0dXJuIChOQU1FUyxGTEFHUyxGVU5DVElPTikKCgoKZGVmIGFkZF9lbnZpcm9ubWVudF92YXJpYWJsZV90b19zdHJpbmcoc3RyaW5nLGVudl92YXIpOgoKICAgIHJldHVybiBzdHJpbmcrZiI7IGV4cG9ydCB7ZW52X3Zhcn0iCgoKCmRlZiB3YWl0KGRlbGF5PU5vbmUpOgoKICAgIGlmIG5vdCBkZWxheToKCiAgICAgICAgc2lnbmFsLnBhdXNlKCkKCiAgICBlbHNlOgoKICAgICAgICB0aW1lLnNsZWVwKGludChkZWxheSkpCgoKCmRlZiBleGVjdXRlX2NsYXNzX21ldGhvZChjbGFzc19pbnN0YW5jZSxmdW5jdGlvbik6CgogICAgaWYgbm90IGNhbGxhYmxlKGdldGF0dHIoY2xhc3NfaW5zdGFuY2UsIGZ1bmN0aW9uLnRpdGxlKCksTm9uZSkpOgoKICAgICAgICAgICAgcHJpbnQoZiJDb21tYW5kIHtmdW5jdGlvbn0gZG9lc24ndCBleGlzdCEiKQoKICAgICAgICAgICAgZXhpdCgpCgogICAgZWxzZToKCiAgICAgICAgcmV0dXJuIGxpc3QoZmxhdHRlbl9saXN0KFtnZXRhdHRyKGNsYXNzX2luc3RhbmNlLGZ1bmN0aW9uLnRpdGxlKCkpKCldKSkKCgoKZGVmIGV4cG9ydF9tZXRob2RzX2dsb2JhbGx5KGNsYXNzX2luc3RhbmNlX3N0cmluZyxnbG9iYWxzX2RpY3QpOgoKICAgIENsYXNzPWV2YWwoZiJ7Y2xhc3NfaW5zdGFuY2Vfc3RyaW5nfS5fX2NsYXNzX18iLGdsb2JhbHNfZGljdCkKCiAgICBmb3IgZnVuYyBpbiBbZnVuYyBmb3IgZnVuYyBpbiBkaXIoQ2xhc3MpIGlmIGNhbGxhYmxlKGdldGF0dHIoQ2xhc3MsIGZ1bmMpKSBhbmQgbm90IGZ1bmMuc3RhcnRzd2l0aCgnX18nKV06CgogICAgICAgIGV4ZWMoZiJnbG9iYWwge2Z1bmN9IixnbG9iYWxzX2RpY3QpCgogICAgICAgIGV4ZWMoZiJ7ZnVuY30gPSB7Y2xhc3NfaW5zdGFuY2Vfc3RyaW5nfS57ZnVuY30iLGdsb2JhbHNfZGljdCkKCgoKY2xhc3MgQ2xhc3M6CgogICAgZGVmIF9faW5pdF9fKHNlbGYsY2xhc3Nfc2VsZixjbGFzc19uYW1lKToKCiAgICAgICAgc2VsZi5zZWxmPWNsYXNzX3NlbGYKCiAgICAgICAgc2VsZi5uYW1lPWNsYXNzX25hbWUKCiAgICAKCiAgICBkZWYgY2xhc3NfaW5pdChzZWxmLF9uYW1lLF9mbGFncz1Ob25lLF9mdW5jdGlvbj1Ob25lKToKCiAgICAgICAgc2VsZi5zZWxmLm5hbWU9X25hbWUKCiAgICAgICAgCgogICAgICAgIHNlbGYuc2VsZi5mbGFncz1nZXRfdmFsdWUoX2ZsYWdzLEZMQUdTKQoKICAgICAgICAKCiAgICAgICAgc2VsZi5zZWxmLmZ1bmN0aW9uPWdldF92YWx1ZShfZnVuY3Rpb24sRlVOQ1RJT04pCgogICAgICAgIAoKICAgICAgICBpZiBzZWxmLnNlbGYuZnVuY3Rpb24gbm90IGluIFsiaW5pdCJdOgoKICAgICAgICAgICAgaWYgbm90IG9zLnBhdGguaXNkaXIoZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfSIpOgoKICAgICAgICAgICAgICAgICByYWlzZSBEb2VzTm90RXhpc3QoKQoKICAgICAgICAgICAgICAgICByZXR1cm4KCiAgICAgICAgICAgIG9zLmNoZGlyKGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0iKQoKICAgIGRlZiBzdG9wKHNlbGYpOgoKICAgICAgICBpZiAiU3RvcHBlZCIgaW4gc2VsZi5zZWxmLlN0YXR1cygpOgoKICAgICAgICAgICAgcmV0dXJuIGYiU2VydmljZSB7c2VsZi5zZWxmLm5hbWV9IGlzIGFscmVhZHkgc3RvcHBlZCIKCiAgICAgICAgCgogICAgICAgIGZvciBwcm9jZXNzIGluIFsibWFpbiIsICJhdXhpbGlhcnkiXToKCiAgICAgICAgICAgIGZvciBwaWQgaW4gc2VsZi5zZWxmLlBzKHByb2Nlc3MpOgoKICAgICAgICAgICAgICAgIG9zLmtpbGwocGlkLHNpZ25hbC5TSUdURVJNKQoKICAgICAgICAKCiAgICBkZWYgY2xlYW51cF9hZnRlcl9zdG9wKHNlbGYpOgoKICAgICAgICBmb3IgZW5kaW5nIGluIFsibG9nIiwibG9jayJdOgoKICAgICAgICAgICAgdHJ5OgoKICAgICAgICAgICAgICAgb3MucmVtb3ZlKGYie1RFTVBESVJ9L3tzZWxmLm5hbWV9X3tzZWxmLnNlbGYubmFtZX0ue2VuZGluZ30iKQoKICAgICAgICAgICAgZXhjZXB0IEZpbGVOb3RGb3VuZEVycm9yOgoKICAgICAgICAgICAgICAgIHBhc3MKCgoKICAgIGRlZiByZXN0YXJ0KHNlbGYpOgoKICAgICAgICByZXR1cm4gW3NlbGYuc2VsZi5TdG9wKCksc2VsZi5zZWxmLlN0YXJ0KCldCgogICAgCgogICAgZGVmIGdldF9tYWluX3Byb2Nlc3Moc2VsZik6CgogICAgICAgIGlmIG5vdCBvcy5wYXRoLmlzZmlsZShmIntURU1QRElSfS97c2VsZi5uYW1lfV97c2VsZi5zZWxmLm5hbWV9LmxvY2siKToKCiAgICAgICAgICAgICAgICByZXR1cm4gW10KCiAgICAgICAgZWxzZToKCiAgICAgICAgICAgIHJldHVybiBsaXN0KG1hcChpbnQsW19bMTpdIGZvciBfIGluIHNoZWxsX2NvbW1hbmQoWyJsc29mIiwiLUZwIiwiLXciLGYie1RFTVBESVJ9L3tzZWxmLm5hbWV9X3tzZWxmLnNlbGYubmFtZX0ubG9jayJdKS5zcGxpdGxpbmVzKCldKSkKCiAgICAKCiAgICBkZWYgbGlzdChzZWxmKToKCiAgICAgICAgcmV0dXJuIHNlbGYuc2VsZi5uYW1lCgoKCiAgICBkZWYgZWRpdChzZWxmKToKCiAgICAgICAgaWYgIkVuYWJsZWQiIGluIHNlbGYuc2VsZi5TdGF0dXMoKToKCiAgICAgICAgICAgIFNoZWxsKFtvcy5nZXRlbnYoIkVESVRPUiIsInZpIiksZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS97c2VsZi5uYW1lfS5weSJdLHN0ZG91dD1Ob25lKQoKICAgICAgICBlbHNlOgoKICAgICAgICAgICAgU2hlbGwoW29zLmdldGVudigiRURJVE9SIiwidmkiKSxmIntST09UfS97c2VsZi5zZWxmLm5hbWV9Ly57c2VsZi5uYW1lfS5weSJdLHN0ZG91dD1Ob25lKQoKCgogICAgZGVmIHN0YXR1cyhzZWxmKToKCiAgICAgICAgc3RhdHVzPVtdCgogICAgICAgIGlmIG9zLnBhdGguaXNmaWxlKGYie1RFTVBESVJ9L3tzZWxmLm5hbWV9X3tzZWxmLnNlbGYubmFtZX0ubG9nIik6CgogICAgICAgICAgICBzdGF0dXMrPVsiU3RhcnRlZCJdCgogICAgICAgIGVsc2U6CgogICAgICAgICAgICBzdGF0dXMrPVsiU3RvcHBlZCJdCgogICAgICAgIAoKICAgICAgICBpZiBvcy5wYXRoLmV4aXN0cyhmIntST09UfS97c2VsZi5zZWxmLm5hbWV9L3tzZWxmLm5hbWV9LnB5Iik6CgogICAgICAgICAgICBzdGF0dXMrPVsiRW5hYmxlZCJdCgogICAgICAgIGVsc2U6CgogICAgICAgICAgICBzdGF0dXMrPVsiRGlzYWJsZWQiXQoKICAgICAgICByZXR1cm4gc3RhdHVzCgogICAgCgogICAgZGVmIGVuYWJsZShzZWxmKToKCiAgICAgICAgaWYgIkVuYWJsZWQiIGluIHNlbGYuc2VsZi5TdGF0dXMoKToKCiAgICAgICAgICAgIHJldHVybiBbZiJ7c2VsZi5uYW1lfSBpcyBhbHJlYWR5IGVuYWJsZWQiXQoKICAgICAgICBlbHNlOgoKICAgICAgICAgICAgb3MucmVuYW1lKGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0vLntzZWxmLm5hbWV9LnB5IixmIntST09UfS97c2VsZi5zZWxmLm5hbWV9L3tzZWxmLm5hbWV9LnB5IikKCiAgICAgICAgCgogICAgICAgIGlmICctLW5vdycgaW4gc2VsZi5zZWxmLmZsYWdzOgoKICAgICAgICAgICAgcmV0dXJuIFtzZWxmLnNlbGYuU3RhcnQoKV0KCgoKICAgICAgICAgICAgCgogICAgZGVmIGRpc2FibGUoc2VsZik6CgogICAgICAgIGlmICJEaXNhYmxlZCIgaW4gc2VsZi5zZWxmLlN0YXR1cygpOgoKICAgICAgICAgICAgcmV0dXJuIFtmIntzZWxmLnNlbGYubmFtZX0gaXMgYWxyZWFkeSBkaXNhYmxlZCJdCgogICAgICAgIGVsc2U6CgogICAgICAgICAgICBvcy5yZW5hbWUoZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS97c2VsZi5uYW1lfS5weSIsZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS8ue3NlbGYubmFtZX0ucHkiKQoKICAgICAgICAKCiAgICAgICAgaWYgJy0tbm93JyBpbiBzZWxmLnNlbGYuZmxhZ3M6CgogICAgICAgICAgICByZXR1cm4gW3NlbGYuc2VsZi5TdG9wKCldCgoKCiAgICBkZWYgbG9nKHNlbGYpOgoKICAgICAgICBzaGVsbF9jb21tYW5kKFsibGVzcyIsIitHIixmIntURU1QRElSfS97c2VsZi5uYW1lfV97c2VsZi5zZWxmLm5hbWV9LmxvZyJdLHN0ZG91dD1Ob25lKQoKICAgIAoKICAgIGRlZiBkZWxldGUoc2VsZik6CgogICAgICAgIHNlbGYuc2VsZi5TdG9wKCkKCiAgICAgICAgc2h1dGlsLnJtdHJlZShzZWxmLnNlbGYubmFtZSkKCiAgICAKCiAgICBkZWYgd2F0Y2goc2VsZik6CgogICAgICAgIHNoZWxsX2NvbW1hbmQoWyJ0YWlsIiwiLWYiLGYie1RFTVBESVJ9L3tzZWxmLm5hbWV9X3tzZWxmLnNlbGYubmFtZX0ubG9nIl0sc3Rkb3V0PU5vbmUpCgoK').decode("utf-8"),utils_module.__dict__)
+exec(base64.b64decode(b'aW1wb3J0IHN1YnByb2Nlc3MKaW1wb3J0IHJlCmltcG9ydCB0ZW1wZmlsZQppbXBvcnQgb3MKaW1wb3J0IHBhdGhsaWIKaW1wb3J0IHNpZ25hbCAKaW1wb3J0IHRpbWUKaW1wb3J0IHN5cwppbXBvcnQgdHlwaW5nCmltcG9ydCBzaHV0aWwKCmRlZiBnZXRfdGVtcGRpcigpOgogICAgaWYgb3MudW5hbWUoKS5zeXNuYW1lPT0iRGFyd2luIjoKICAgICAgICByZXR1cm4gIi90bXAiCiAgICBlbHNlOgogICAgICAgIHJldHVybiB0ZW1wZmlsZS5nZXR0ZW1wZGlyKCkKICAgIAoKCgpjbGFzcyBEb2VzTm90RXhpc3QoRXhjZXB0aW9uKToKICAgIHBhc3MKCmRlZiBnZXRfdmFsdWUodmFyaWFibGUsZGVmYXVsdCk6CglpZiBub3QgdmFyaWFibGU6CgkJcmV0dXJuIGRlZmF1bHQKCWVsc2U6CgkJcmV0dXJuIHZhcmlhYmxlCgpkZWYgZ2V0X3Jvb3RfZGlyZWN0b3J5KGNsYXNzX25hbWUscm9vdF92YXJpYWJsZT1Ob25lLGRlZmF1bHRfdmFsdWU9Tm9uZSk6CiAgICByb290X3ZhcmlhYmxlPWdldF92YWx1ZShyb290X3ZhcmlhYmxlLGYie2NsYXNzX25hbWUudXBwZXIoKX1fUk9PVCIpCiAgICBkZWZhdWx0X3ZhbHVlPWdldF92YWx1ZShkZWZhdWx0X3ZhbHVlLGYie29zLmVudmlyb25bJ0hPTUUnXX0ve2NsYXNzX25hbWUudGl0bGUoKX1zIikKICAgIHJldHVybiBvcy5wYXRoLmV4cGFuZHVzZXIob3MuZ2V0ZW52KHJvb3RfdmFyaWFibGUsZGVmYXVsdF92YWx1ZSkpCiAgICAKUk9PVD1Ob25lCk5BTUVTPU5vbmUKRkxBR1M9Tm9uZQpGVU5DVElPTj1Ob25lClRFTVBESVI9Tm9uZQoKZGVmIGxpc3RfaXRlbXNfaW5fcm9vdChuYW1lcyxmbGFncyxjbGFzc19uYW1lKToKICAgIEFsbD1bXyBmb3IgXyBpbiBzb3J0ZWQob3MubGlzdGRpcihST09UKSkgaWYgbm90IF8uc3RhcnRzd2l0aCgnLicpIF0KICAgIGlmICItLXN0YXJ0ZWQiIGluIGZsYWdzOgogICAgICAgIG5hbWVzKz1bXyBmb3IgXyBpbiBBbGwgaWYgIlN0YXJ0ZWQiIGluIGV2YWwoZiJ7Y2xhc3NfbmFtZX0oXykuU3RhdHVzKCkiKSBdCiAgICAgICAgZmxhZ3MucmVtb3ZlKCItLXN0YXJ0ZWQiKQogICAgaWYgIi0tc3RvcHBlZCIgaW4gZmxhZ3M6CiAgICAgICAgbmFtZXMrPVtfIGZvciBfIGluIEFsbCBpZiAiU3RvcHBlZCIgaW4gZXZhbChmIntjbGFzc19uYW1lfShfKS5TdGF0dXMoKSIpIF0KICAgICAgICBmbGFncy5yZW1vdmUoIi0tc3RvcHBlZCIpCiAgICBpZiAiLS1lbmFibGVkIiBpbiBmbGFnczoKICAgICAgICBuYW1lcys9W18gZm9yIF8gaW4gQWxsIGlmICJFbmFibGVkIiBpbiBldmFsKGYie2NsYXNzX25hbWV9KF8pLlN0YXR1cygpIikgXQogICAgICAgIGZsYWdzLnJlbW92ZSgiLS1lbmFibGVkIikKICAgIAogICAgaWYgIi0tZGlzYWJsZWQiIGluIGZsYWdzOgogICAgICAgIG5hbWVzKz1bXyBmb3IgXyBpbiBBbGwgaWYgIkRpc2FibGVkIiBpbiBldmFsKGYie2NsYXNzX25hbWV9KF8pLlN0YXR1cygpIikgXQogICAgICAgIGZsYWdzLnJlbW92ZSgiLS1kaXNhYmxlZCIpCgogICAgaWYgIi0tYWxsIiBpbiBmbGFnczoKICAgICAgICBuYW1lcys9QWxsCiAgICAgICAgZmxhZ3MucmVtb3ZlKCItLWFsbCIpCiAgICBpZiBuYW1lcz09W106CiAgICAgICAgcHJpbnQoZiJObyB7Y2xhc3NfbmFtZX1zIHNwZWNpZmllZCEiKQogICAgICAgIGV4aXQoKQogICAgcmV0dXJuIG5hbWVzCgpkZWYgZmxhdHRlbl9saXN0KGl0ZW1zKToKICAgICIiIllpZWxkIGl0ZW1zIGZyb20gYW55IG5lc3RlZCBpdGVyYWJsZS4iIiIKICAgIGZvciB4IGluIGl0ZW1zOgogICAgICAgIGlmIGlzaW5zdGFuY2UoeCwgdHlwaW5nLkl0ZXJhYmxlKSBhbmQgbm90IGlzaW5zdGFuY2UoeCwgKHN0ciwgYnl0ZXMpKToKICAgICAgICAgICAgZm9yIHN1Yl94IGluIGZsYXR0ZW5fbGlzdCh4KToKICAgICAgICAgICAgICAgIHlpZWxkIHN1Yl94CiAgICAgICAgZWxzZToKICAgICAgICAgICAgeWllbGQgeAoKZGVmIHByaW50X2xpc3QobCk6CiAgICBmb3IgZWxlbWVudCBpbiBsOgogICAgICAgIGlmIGVsZW1lbnQgaXMgTm9uZToKICAgICAgICAgICAgcHJpbnQoZW5kPScnKQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHByaW50KGVsZW1lbnQpCgpkZWYgc3BsaXRfc3RyaW5nX2J5X2NoYXIoc3RyaW5nLGNoYXI9JzonKToKICAgIFBBVFRFUk4gPSByZS5jb21waWxlKHJmJycnKCg/OlteXHtjaGFyfSInXXwiW14iXSoifCdbXiddKicpKyknJycpCiAgICByZXR1cm4gW18gZm9yIF8gaW4gbGlzdChQQVRURVJOLnNwbGl0KHN0cmluZykpIGlmIF8gbm90IGluIFsnJywgY2hhcl1dCgoKZGVmIHNoZWxsX2NvbW1hbmQoY29tbWFuZCxzdGRvdXQ9c3VicHJvY2Vzcy5QSVBFLHN0ZGVycj1zdWJwcm9jZXNzLlNURE9VVCxhcmJpdHJhcnk9RmFsc2UsYmxvY2s9VHJ1ZSk6CiAgICBwcm9jZXNzID0gc3VicHJvY2Vzcy5Qb3Blbihjb21tYW5kLCBzdGRvdXQ9c3Rkb3V0LCBzdGRlcnI9c3RkZXJyLHVuaXZlcnNhbF9uZXdsaW5lcz1UcnVlLHNoZWxsPWFyYml0cmFyeSkKICAgIGlmIGJsb2NrOgogICAgICAgIHJldHVybiBwcm9jZXNzLmNvbW11bmljYXRlKClbMF0KCgoKCmRlZiBleHRyYWN0X2FyZ3VtZW50cygpOgogICAgYXJndW1lbnRzPXN5cy5hcmd2WzE6XQogICAgdHJ5OgogICAgICAgIEZVTkNUSU9OPWFyZ3VtZW50c1swXQogICAgZXhjZXB0IEluZGV4RXJyb3I6CiAgICAgICAgcHJpbnQoIk5vIGZ1bmN0aW9uIHNwZWNpZmllZCEiKQogICAgICAgIGV4aXQoKQogICAgYXJndW1lbnRzPWFyZ3VtZW50c1sxOl0KICAgIAogICAgTkFNRVM9W10KICAgIEZMQUdTPWFyZ3VtZW50cwogICAgZm9yIGkgaW4gcmFuZ2UobGVuKGFyZ3VtZW50cykpOgogICAgICAgIGlmIG5vdCBhcmd1bWVudHNbaV0uc3RhcnRzd2l0aCgiLS0iKToKICAgICAgICAgICAgRkxBR1M9YXJndW1lbnRzWzppXQogICAgICAgICAgICBOQU1FUz1hcmd1bWVudHNbaTpdCiAgICAgICAgICAgIGJyZWFrCiAgICByZXR1cm4gKE5BTUVTLEZMQUdTLEZVTkNUSU9OKQoKZGVmIGFkZF9lbnZpcm9ubWVudF92YXJpYWJsZV90b19zdHJpbmcoc3RyaW5nLGVudl92YXIpOgogICAgcmV0dXJuIHN0cmluZytmIjsgZXhwb3J0IHtlbnZfdmFyfSIKCmRlZiB3YWl0KGRlbGF5PU5vbmUpOgogICAgaWYgbm90IGRlbGF5OgogICAgICAgIHNpZ25hbC5wYXVzZSgpCiAgICBlbHNlOgogICAgICAgIHRpbWUuc2xlZXAoaW50KGRlbGF5KSkKCmRlZiBleGVjdXRlX2NsYXNzX21ldGhvZChjbGFzc19pbnN0YW5jZSxmdW5jdGlvbik6CiAgICBpZiBub3QgY2FsbGFibGUoZ2V0YXR0cihjbGFzc19pbnN0YW5jZSwgZnVuY3Rpb24udGl0bGUoKSxOb25lKSk6CiAgICAgICAgICAgIHByaW50KGYiQ29tbWFuZCB7ZnVuY3Rpb259IGRvZXNuJ3QgZXhpc3QhIikKICAgICAgICAgICAgZXhpdCgpCiAgICBlbHNlOgogICAgICAgIHJldHVybiBsaXN0KGZsYXR0ZW5fbGlzdChbZ2V0YXR0cihjbGFzc19pbnN0YW5jZSxmdW5jdGlvbi50aXRsZSgpKSgpXSkpCgpkZWYgZXhwb3J0X21ldGhvZHNfZ2xvYmFsbHkoY2xhc3NfaW5zdGFuY2Vfc3RyaW5nLGdsb2JhbHNfZGljdCk6CiAgICBDbGFzcz1ldmFsKGYie2NsYXNzX2luc3RhbmNlX3N0cmluZ30uX19jbGFzc19fIixnbG9iYWxzX2RpY3QpCiAgICBmb3IgZnVuYyBpbiBbZnVuYyBmb3IgZnVuYyBpbiBkaXIoQ2xhc3MpIGlmIGNhbGxhYmxlKGdldGF0dHIoQ2xhc3MsIGZ1bmMpKSBhbmQgbm90IGZ1bmMuc3RhcnRzd2l0aCgnX18nKV06CiAgICAgICAgZXhlYyhmImdsb2JhbCB7ZnVuY30iLGdsb2JhbHNfZGljdCkKICAgICAgICBleGVjKGYie2Z1bmN9ID0ge2NsYXNzX2luc3RhbmNlX3N0cmluZ30ue2Z1bmN9IixnbG9iYWxzX2RpY3QpCgpjbGFzcyBDbGFzczoKICAgIGRlZiBfX2luaXRfXyhzZWxmLGNsYXNzX3NlbGYsY2xhc3NfbmFtZSk6CiAgICAgICAgc2VsZi5zZWxmPWNsYXNzX3NlbGYKICAgICAgICBzZWxmLm5hbWU9Y2xhc3NfbmFtZQogICAgCiAgICBkZWYgY2xhc3NfaW5pdChzZWxmLF9uYW1lLF9mbGFncz1Ob25lLF9mdW5jdGlvbj1Ob25lKToKICAgICAgICBzZWxmLnNlbGYubmFtZT1fbmFtZQogICAgICAgIAogICAgICAgIHNlbGYuc2VsZi5mbGFncz1nZXRfdmFsdWUoX2ZsYWdzLEZMQUdTKQogICAgICAgIAogICAgICAgIHNlbGYuc2VsZi5mdW5jdGlvbj1nZXRfdmFsdWUoX2Z1bmN0aW9uLEZVTkNUSU9OKQogICAgICAgIAogICAgICAgIGlmIHNlbGYuc2VsZi5mdW5jdGlvbiBub3QgaW4gWyJpbml0Il06CiAgICAgICAgICAgIGlmIG5vdCBvcy5wYXRoLmlzZGlyKGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0iKToKICAgICAgICAgICAgICAgICByYWlzZSBEb2VzTm90RXhpc3QoKQogICAgICAgICAgICAgICAgIHJldHVybgogICAgICAgICAgICBvcy5jaGRpcihmIntST09UfS97c2VsZi5zZWxmLm5hbWV9IikKICAgIGRlZiBzdG9wKHNlbGYpOgogICAgICAgIGlmICJTdG9wcGVkIiBpbiBzZWxmLnNlbGYuU3RhdHVzKCk6CiAgICAgICAgICAgIHJldHVybiBmIlNlcnZpY2Uge3NlbGYuc2VsZi5uYW1lfSBpcyBhbHJlYWR5IHN0b3BwZWQiCiAgICAgICAgCiAgICAgICAgZm9yIHByb2Nlc3MgaW4gWyJtYWluIiwgImF1eGlsaWFyeSJdOgogICAgICAgICAgICBmb3IgcGlkIGluIHNlbGYuc2VsZi5Qcyhwcm9jZXNzKToKICAgICAgICAgICAgICAgIG9zLmtpbGwocGlkLHNpZ25hbC5TSUdURVJNKQogICAgICAgIAogICAgZGVmIGNsZWFudXBfYWZ0ZXJfc3RvcChzZWxmKToKICAgICAgICBmb3IgZW5kaW5nIGluIFsibG9nIiwibG9jayJdOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgIG9zLnJlbW92ZShmIntURU1QRElSfS97c2VsZi5uYW1lfV97c2VsZi5zZWxmLm5hbWV9LntlbmRpbmd9IikKICAgICAgICAgICAgZXhjZXB0IEZpbGVOb3RGb3VuZEVycm9yOgogICAgICAgICAgICAgICAgcGFzcwoKICAgIGRlZiByZXN0YXJ0KHNlbGYpOgogICAgICAgIHJldHVybiBbc2VsZi5zZWxmLlN0b3AoKSxzZWxmLnNlbGYuU3RhcnQoKV0KICAgIAogICAgZGVmIGdldF9tYWluX3Byb2Nlc3Moc2VsZik6CiAgICAgICAgaWYgbm90IG9zLnBhdGguaXNmaWxlKGYie1RFTVBESVJ9L3tzZWxmLm5hbWV9X3tzZWxmLnNlbGYubmFtZX0ubG9jayIpOgogICAgICAgICAgICAgICAgcmV0dXJuIFtdCiAgICAgICAgZWxzZToKICAgICAgICAgICAgcmV0dXJuIGxpc3QobWFwKGludCxbX1sxOl0gZm9yIF8gaW4gc2hlbGxfY29tbWFuZChbImxzb2YiLCItRnAiLCItdyIsZiJ7VEVNUERJUn0ve3NlbGYubmFtZX1fe3NlbGYuc2VsZi5uYW1lfS5sb2NrIl0pLnNwbGl0bGluZXMoKV0pKQogICAgCiAgICBkZWYgbGlzdChzZWxmKToKICAgICAgICByZXR1cm4gc2VsZi5zZWxmLm5hbWUKCiAgICBkZWYgZWRpdChzZWxmKToKICAgICAgICBpZiAiRW5hYmxlZCIgaW4gc2VsZi5zZWxmLlN0YXR1cygpOgogICAgICAgICAgICBTaGVsbChbb3MuZ2V0ZW52KCJFRElUT1IiLCJ2aSIpLGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0ve3NlbGYubmFtZX0ucHkiXSxzdGRvdXQ9Tm9uZSkKICAgICAgICBlbHNlOgogICAgICAgICAgICBTaGVsbChbb3MuZ2V0ZW52KCJFRElUT1IiLCJ2aSIpLGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0vLntzZWxmLm5hbWV9LnB5Il0sc3Rkb3V0PU5vbmUpCgogICAgZGVmIHN0YXR1cyhzZWxmKToKICAgICAgICBzdGF0dXM9W10KICAgICAgICBpZiBvcy5wYXRoLmlzZmlsZShmIntURU1QRElSfS97c2VsZi5uYW1lfV97c2VsZi5zZWxmLm5hbWV9LmxvZyIpOgogICAgICAgICAgICBzdGF0dXMrPVsiU3RhcnRlZCJdCiAgICAgICAgZWxzZToKICAgICAgICAgICAgc3RhdHVzKz1bIlN0b3BwZWQiXQogICAgICAgIAogICAgICAgIGlmIG9zLnBhdGguZXhpc3RzKGYie1JPT1R9L3tzZWxmLnNlbGYubmFtZX0ve3NlbGYubmFtZX0ucHkiKToKICAgICAgICAgICAgc3RhdHVzKz1bIkVuYWJsZWQiXQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIHN0YXR1cys9WyJEaXNhYmxlZCJdCiAgICAgICAgcmV0dXJuIHN0YXR1cwogICAgCiAgICBkZWYgZW5hYmxlKHNlbGYpOgogICAgICAgIGlmICJFbmFibGVkIiBpbiBzZWxmLnNlbGYuU3RhdHVzKCk6CiAgICAgICAgICAgIHJldHVybiBbZiJ7c2VsZi5uYW1lfSBpcyBhbHJlYWR5IGVuYWJsZWQiXQogICAgICAgIGVsc2U6CiAgICAgICAgICAgIG9zLnJlbmFtZShmIntST09UfS97c2VsZi5zZWxmLm5hbWV9Ly57c2VsZi5uYW1lfS5weSIsZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS97c2VsZi5uYW1lfS5weSIpCiAgICAgICAgCiAgICAgICAgaWYgJy0tbm93JyBpbiBzZWxmLnNlbGYuZmxhZ3M6CiAgICAgICAgICAgIHJldHVybiBbc2VsZi5zZWxmLlN0YXJ0KCldCgogICAgICAgICAgICAKICAgIGRlZiBkaXNhYmxlKHNlbGYpOgogICAgICAgIGlmICJEaXNhYmxlZCIgaW4gc2VsZi5zZWxmLlN0YXR1cygpOgogICAgICAgICAgICByZXR1cm4gW2Yie3NlbGYuc2VsZi5uYW1lfSBpcyBhbHJlYWR5IGRpc2FibGVkIl0KICAgICAgICBlbHNlOgogICAgICAgICAgICBvcy5yZW5hbWUoZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS97c2VsZi5uYW1lfS5weSIsZiJ7Uk9PVH0ve3NlbGYuc2VsZi5uYW1lfS8ue3NlbGYubmFtZX0ucHkiKQogICAgICAgIAogICAgICAgIGlmICctLW5vdycgaW4gc2VsZi5zZWxmLmZsYWdzOgogICAgICAgICAgICByZXR1cm4gW3NlbGYuc2VsZi5TdG9wKCldCgogICAgZGVmIGxvZyhzZWxmKToKICAgICAgICBzaGVsbF9jb21tYW5kKFsibGVzcyIsIitHIixmIntURU1QRElSfS97c2VsZi5uYW1lfV97c2VsZi5zZWxmLm5hbWV9LmxvZyJdLHN0ZG91dD1Ob25lKQogICAgCiAgICBkZWYgZGVsZXRlKHNlbGYpOgogICAgICAgIHNlbGYuc2VsZi5TdG9wKCkKICAgICAgICBzaHV0aWwucm10cmVlKHNlbGYuc2VsZi5uYW1lKQogICAgCiAgICBkZWYgd2F0Y2goc2VsZik6CiAgICAgICAgc2hlbGxfY29tbWFuZChbInRhaWwiLCItZiIsZiJ7VEVNUERJUn0ve3NlbGYubmFtZX1fe3NlbGYuc2VsZi5uYW1lfS5sb2ciXSxzdGRvdXQ9Tm9uZSkKCg==').decode("utf-8"),utils_module.__dict__)
 sys.modules["utils"]=utils_module
 
-
-
 import utils
-
 CLASS_NAME="Container"
 
-
-
 utils.ROOT=ROOT=utils.get_root_directory(CLASS_NAME)
-
 utils.TEMPDIR=TEMPDIR=utils.get_tempdir()
-
-
 
 NAMES,FLAGS,FUNCTION=utils.extract_arguments()
 
-
-
 utils.NAMES=NAMES
-
 utils.FLAGS=FLAGS
-
 utils.ROOT=ROOT
 
-
-
 SHELL=os.getenv('SHELL','bash')
-
 SHELL_CWD=os.environ.get("PWD")
-
 PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
 
-
-
 #Helper functions
-
 def list_containers(*args, **kwargs):
-
     return utils.list_items_in_root(*args, utils.FLAGS,CLASS_NAME,**kwargs)    
 
-
-
 def flatten(*args, **kwargs):
-
     return utils.flatten_list(*args, **kwargs)
 
-
-
 def print_result(*args, **kwargs):
-
     return utils.print_list(*args, **kwargs)
 
-
-
 def split_by_char(*args, **kwargs):
-
     return utils.split_string_by_char(*args, **kwargs)
-
     
-
 def Shell(*args, **kwargs):
-
     return utils.shell_command(*args, **kwargs)
 
-
-
 def convert_colon_string_to_directory(string):
-
     string=split_by_char(string)
-
     if string[0]=="root":
-
         string=string[1]
-
     elif len(string)==1:
-
         string=string[0]
-
     else:
-
         string=f"{ROOT}/{string[0]}/diff{string[1]}"
-
     string=os.path.expanduser(string)
-
     return string
 
-
-
 ContainerDoesNotExist=utils.DoesNotExist
-
 class Container:
-
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
-
         self.Class = utils.Class(self,CLASS_NAME.lower())
-
         self.Class.class_init(_name,_flags,_function)
-
         
-
         self.base="void"
-
         
-
         self.unionopts=utils.get_value(_unionopts,"diff=RW")
-
         
-
         self.env=utils.get_value(_env,f"export {PATH}")
-
         
-
         #Whether we mounted dev, proc, etc.
-
         self.mounted_special=False
-
             
-
         self.workdir=_workdir
-
     
-
     #Functions
-
     def Run(self,command="",pipe=False):
-
         if self.function=="build":
-
             if command.strip()!="":
-
                 print(f"Command: {command}")
-
         self.Base(self.base)
-
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
-
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
-
             self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
-
             
-
             #Prevent merged from being mounted multiple times
-
             if not os.path.ismount("merged"):
-
                 Shell(["unionfs","-o","allow_other,cow,hide_meta_files",f"{self.unionopts}","merged"])
-
                
-
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively, but for now, this is what is needed)
-
         if not self.mounted_special:
-
             for dir in ["dev","proc","sys","run"]:
-
                 if not os.path.ismount(f"merged/{dir}"):
-
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
-
                     #Shell(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
-
                     Shell(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
-
                    
-
             self.mounted_special=True
-
             
-
         
-
         with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_file:
-
             log_file.write(f"Command: {command}\n")
-
             log_file.flush()
-
             
-
             #Pipe output to variable
-
             if pipe:
-
                 stdout=subprocess.PIPE
-
                 stderr=subprocess.DEVNULL
-
             #Print output to file
-
             else:
-
                 stdout=log_file
-
                 stderr=subprocess.STDOUT
-
             return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
-
             
-
     
-
     def Ps(self,process="auxiliary"):
-
         if process=="main":
-
             return self.Class.get_main_process()
-
         elif process=="auxiliary":
-
             if not os.path.isdir("merged"):
-
                 return []
-
             processes=[_[1:] for _ in Shell(["lsof","-Fp","-w","--","merged"]).splitlines()]
-
             return list(map(int,processes))
-
     
-
     def Mount(self,IN,OUT):
-
         os.makedirs(f"diff{OUT}",exist_ok=True)
-
         if not os.path.ismount(f"diff{OUT}"):
-
             IN=convert_colon_string_to_directory(IN)
-
             Shell(["bindfs",IN,f"diff{OUT}"])
-
     
-
     def Copy(self,src,dest):
-
         #Relative directory
-
         if not dest.startswith("/"):
-
             dest=f"diff{self.workdir}/{dest}"
-
         
-
         #Absolute directory
-
         else:
-
             dest=f"diff{dest}"
-
         
-
         src=convert_colon_string_to_directory(src)
-
         #Relative directory
-
         if not src.startswith("/"):
-
             src=f"{SHELL_CWD}/{src}"
-
             
-
         #Remove trailing slashes, in order to prevent gotchas with cp
-
         if src.endswith("/"):
-
             src=src[:-1]
-
         if dest.endswith("/"):
-
             dest=dest[:-1]
-
         
-
         #print(f"cp -a {src} {dest}")                   
-
         cp_error=Shell(["cp","-a",f"{src}",f"{dest}"])
-
         if "cp: cannot create" in cp_error:
-
             #dest does not exist, so create its parent's folder
-
             os.makedirs(os.path.dirname(dest),exist_ok=True)
-
             Shell(["cp","-a",f"{src}",f"{dest}"])
 
-
-
     def Loop(self,command,delay=60):
-
         if isinstance(command,str):
-
             def func():
-
                 while True:
-
                     Run(command)
-
                     self.Wait(delay)
-
         else:
-
             def func():
-
                 while True:  
-
                     command()
-
                     self.Wait(delay)
-
         threading.Thread(target=func).start()
-
         #Run(f'(while true; do "{command}"; sleep {delay}; done)')
-
         
-
     def Base(self,base):
-
         
-
         #Effectively make subsequent Bases a no-op
-
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
-
             self.base=base
-
     
-
     def Wait(self,*args, **kwargs):
-
         utils.wait(*args, **kwargs)
 
-
-
     def Layer(self,layer,mode="RO"):
-
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
-
     
-
     def Workdir(self,work_dir):
-
         
-
         #Remove trailing slashes, but only for strings that are not /
-
         if work_dir.endswith('/') and len(work_dir)>1:
-
             work_dir=work_dir[:-1]
-
             
-
         if work_dir.startswith("/"):
-
             self.workdir=work_dir
-
         else:    
-
             self.workdir+='/'+work_dir
-
         
-
         #Remove repeated / in workdir
-
         self.workdir=re.sub(r'(/)\1+', r'\1',self.workdir)
-
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
-
     
-
     def Env(self,*args, **kwargs):
-
         self.env=utils.add_environment_variable_to_string(self.env,*args, **kwargs)
-
         
-
     #Commands      
-
     def Start(self):
-
         
-
         self.Base(self.base)
-
         
-
         if "Started" in self.Status():
-
             return f"Container {self.name} is already started"
-
         
-
         #Fork process, so it can run in the background
-
         pid=os.fork()
-
         
-
         #If child, run code, then exit 
-
         if pid==0:
-
             #Open a lock file so I can find it with lsof later
-
             lock_file=open(f"{TEMPDIR}/container_{self.name}.lock","w+")
-
             #Run *service.py
-
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
-
                 code=f.read()
-
             exec(code,globals(),locals())
-
             
-
             #Don't have to put Run() in container-compose.py just to start it
-
             self.Run()
-
             self.Wait()
-
             exit()
-
         if "--only-chroot" in self.flags:
-
             return [self.Chroot(), self.Stop()]
-
         elif "--and-chroot" in self.flags:
-
             return [self.Chroot()]
-
         
-
     def Build(self):
-
         self.Stop()
-
         with open("Containerfile") as f:
-
          code = compile(f.read(), 'Containerfile', 'exec')
-
          exec(code,globals(),locals())
-
         self.Stop()
-
        
-
     def Stop(self):
-
         output=[self.Class.stop()]
-
         #Unmount dev,proc, etc. if directory exists
-
         if os.path.isdir("merged"):
-
             for dir in os.listdir("merged"):
-
                 if os.path.ismount(f"merged/{dir}"):
-
                 
-
                     Shell(["sudo","mount","--make-rslave",f"merged/{dir}"])
-
                     Shell(["sudo","umount","-R","-l",f"merged/{dir}"])
-
                     
-
         
-
         diff_directories=[split_by_char(_," ")[2] for _ in Shell(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
-
         for dir in diff_directories:
-
              Shell(["umount","-l",f"{dir}"])
-
         Shell(["umount","-l","merged"])
-
     
-
     
-
         self.Class.cleanup_after_stop()
-
         return output
 
-
-
     def Restart(self):
-
         return self.Class.restart()
-
     
-
     def Chroot(self):
-
         if self.flags==[] and ("Stopped" in self.Status()):
-
             self.flags+=['--only-chroot']
-
             return [self.Start()]
-
         os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.name}/merged {SHELL}")
-
     
-
     
-
     def List(self):
-
         return self.Class.list()
 
-
-
     def Init(self):
-
        
-
         os.makedirs(f"{ROOT}/{self.name}",exist_ok=True)
-
         os.chdir(f"{ROOT}/{self.name}")
-
         os.makedirs("diff",exist_ok=True)
-
         os.makedirs("merged",exist_ok=True)
-
         with open(f"container-compose.py",'a'):
-
             pass
-
         
-
         if '--build' in self.flags:
-
             with open(f"Containerfile",'a'):
-
                 pass
-
         
-
         if '--no-edit' not in self.flags:
-
             self.Edit()
-
         
-
         if '--and-chroot' in self.flags:
-
             return [Container(self.name,self.flags+['--only-chroot'],self.unionopts).Start()]
 
-
-
     def Edit(self):
-
         if '--build' in self.flags:
-
             Shell([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/Containerfile"],stdout=None)
-
         else:
-
             Shell([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/container-compose.py"],stdout=None)
 
-
-
     def Status(self):
-
         return self.Class.status()
 
-
-
     def Log(self):
-
         self.Class.log()
-
     
-
     def Clean(self):
-
         self.Stop()
-
         os.system(f"sudo rm -rf diff/*")
-
     
-
     def Delete(self):
-
         self.Stop()
-
         Shell(["sudo","rm","-rf",f"{ROOT}/{self.name}"])
-
     
-
     def Watch(self):
-
         self.Class.watch()
 
-
-
 exec(f"utils.{CLASS_NAME}={CLASS_NAME}")
-
 NAMES=list_containers(utils.NAMES)
 
-
-
 for name in NAMES:
-
     
-
     BASE="void"
-
     UNIONOPTS="diff=RW"
-
     
-
     try:
-
         container=Container(name,utils.FLAGS,UNIONOPTS)
-
     except ContainerDoesNotExist:
-
         print(f"Container {name} does not exist")
-
         continue
-
         
-
     utils.export_methods_globally(CLASS_NAME.lower(),globals())
-
     result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
-
     
-
     print_result(result)
-
         
-
-
 
     
