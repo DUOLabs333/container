@@ -270,6 +270,10 @@ class Container:
         os.chdir(f"{ROOT}/{self.name}")
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
+        
+        if '--temp' in self.flags:
+            self.flags.append('--no-edit')
+            self.flags.append('--and-chroot')
         with open(f"container-compose.py",'a'):
             pass
         
@@ -281,7 +285,7 @@ class Container:
             self.Edit()
         
         if '--and-chroot' in self.flags:
-            return [Container(self.name,self.flags+['--only-chroot'],self.unionopts).Start()]
+            return [Container(self.name,self.flags+['--only-chroot'],self.unionopts).Start(), self.Stop() if '--temp' in self.flags else None]
 
     def Edit(self):
         if '--build' in self.flags:
