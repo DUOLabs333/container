@@ -273,7 +273,7 @@ class Container:
         
         if '--temp' in self.flags:
             self.flags.append('--no-edit')
-            self.flags.append('--and-chroot')
+            self.flags.append('--only-chroot')
         with open(f"container-compose.py",'a'):
             pass
         
@@ -284,8 +284,8 @@ class Container:
         if '--no-edit' not in self.flags:
             self.Edit()
         
-        if '--and-chroot' in self.flags:
-            return [Container(self.name,self.flags+['--only-chroot'],self.unionopts).Start(), self.Stop() if '--temp' in self.flags else None]
+        if utils.check_if_element_any_is_in_list(['--only-chroot','--and-chroot'],self.flags):
+            return [self.Start(),self.Delete() if '--temp' in self.flags else None]
 
     def Edit(self):
         if '--build' in self.flags:
