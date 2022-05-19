@@ -64,7 +64,7 @@ ContainerDoesNotExist=utils.DoesNotExist
 class Container:
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
         self.Class = utils.Class(self,CLASS_NAME.lower())
-        self.Class.class_init(_name,_flags,_function)
+        self.Class.class_init(_name,_flags,_function,_workdir)
         
         self.base="void"
         
