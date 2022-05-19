@@ -151,18 +151,8 @@ class Container:
             os.makedirs(os.path.dirname(dest),exist_ok=True)
             Shell(["cp","-a",f"{src}",f"{dest}"])
 
-    def Loop(self,command,delay=60):
-        if isinstance(command,str):
-            def func():
-                while True:
-                    Run(command)
-                    self.Wait(delay)
-        else:
-            def func():
-                while True:  
-                    command()
-                    self.Wait(delay)
-        threading.Thread(target=func).start()
+    def Loop(self,*args, **kwargs):
+        self.Class.loop(*args, **kwargs)
         #Run(f'(while true; do "{command}"; sleep {delay}; done)')
         
     def Base(self,base):
@@ -177,19 +167,8 @@ class Container:
     def Layer(self,layer,mode="RO"):
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
-    def Workdir(self,work_dir):
-        
-        #Remove trailing slashes, but only for strings that are not /
-        if work_dir.endswith('/') and len(work_dir)>1:
-            work_dir=work_dir[:-1]
-            
-        if work_dir.startswith("/"):
-            self.workdir=work_dir
-        else:    
-            self.workdir+='/'+work_dir
-        
-        #Remove repeated / in workdir
-        self.workdir=re.sub(r'(/)\1+', r'\1',self.workdir)
+    def Workdir(self,*args, **kwargs):
+        self.Class.workdir(*args, **kwargs)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
     
     def Env(self,*args, **kwargs):
