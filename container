@@ -75,7 +75,9 @@ def remove_empty_folders():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
         if not path.startswith("diff/.unionfs"):
-            os.rmdir(path)
+            if len(os.listdir(path)) == 0:
+                os.rmdir(path)
+                
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
