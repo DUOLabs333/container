@@ -63,14 +63,19 @@ def convert_colon_string_to_directory(string):
     
 def load_dependencies(layer):
     with open(f"{ROOT}/{layer}/container-compose.py") as fh:        
-           root = ast.parse(fh.read())
-           for node in ast.iter_child_nodes(root):
-               if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
-                   function=node.value.func.id
-                   arguments=tuple([ast.literal_eval(val) for val in node.value.args])
-                   if function in ["Layer","Base","Env"]:
-                       globals()[function](*arguments)
+       root = ast.parse(fh.read())
+       for node in ast.iter_child_nodes(root):
+           if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
+               function=node.value.func.id
+               arguments=[ast.literal_eval(val) for val in node.value.args]
+               if function in ["Layer","Base","Env"]:
+                   globals()[function](*arguments)
 
+def remove_empty_folders():
+    walk = list(os.walk("diff"))
+    for path, _, _ in walk[::-1]:
+        if not path.startswith("diff/.unionfs"):
+            os.rmdir(path)
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
@@ -229,6 +234,8 @@ class Container:
          code = compile(f.read(), 'Containerfile', 'exec')
          exec(code,globals(),locals())
         self.Stop()
+        remove_empty_folders()
+        
        
     def Stop(self):
         output=[self.Class.stop()]
