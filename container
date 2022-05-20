@@ -5,6 +5,7 @@ import sys
 import os
 import threading
 import time
+import ast
 
 
 
@@ -59,6 +60,16 @@ def convert_colon_string_to_directory(string):
         string=f"{ROOT}/{string[0]}/diff{string[1]}"
     string=os.path.expanduser(string)
     return string
+    
+def load_dependencies(layer):
+    with open(f"{ROOT}/{layer}/container-compose.py") as fh:        
+           root = ast.parse(fh.read())
+           for node in ast.iter_child_nodes(root):
+               if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
+                   function=node.value.func.id
+                   arguments=tuple([ast.literal_eval(val) for val in node.value.args])
+                   if function in ["Layer","Base","Env"]:
+                       globals()[function](*arguments)
 
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
@@ -173,6 +184,7 @@ class Container:
         utils.wait(*args, **kwargs)
 
     def Layer(self,layer,mode="RO"):
+        load_dependencies(layer)
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
     def Workdir(self,*args, **kwargs):
