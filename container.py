@@ -59,8 +59,8 @@ def load_dependencies(layer):
        for node in ast.iter_child_nodes(root):
            if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
                function=node.value.func.id
-               arguments=[eval(ast.unparse(val)) for val in node.value.args]
                if function in ["Layer","Base","Env"]:
+                   arguments=[eval(ast.unparse(val)) for val in node.value.args]
                    globals()[function](*arguments)
 
 def remove_empty_folders():
