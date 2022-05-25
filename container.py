@@ -61,7 +61,7 @@ def load_dependencies(layer):
                    arguments=[eval(ast.unparse(val)) for val in node.value.args]
                    globals()[function](*arguments)
 
-def remove_empty_folders():
+def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
         if not path.startswith("diff/.unionfs"):
@@ -226,7 +226,7 @@ class Container:
          code = compile(f.read(), 'Containerfile', 'exec')
          exec(code,globals(),locals())
         self.Stop()
-        remove_empty_folders()
+        remove_empty_folders_in_diff()
         
        
     def Stop(self):
