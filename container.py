@@ -18,9 +18,7 @@ utils.TEMPDIR=TEMPDIR=utils.get_tempdir()
 NAMES,FLAGS,FUNCTION=utils.extract_arguments()
 
 utils.NAMES=NAMES
-utils.FLAGS=FLAGS
 utils.ROOT=ROOT
-utils.FUNCTION=FUNCTION
 
 SHELL=os.getenv('SHELL','bash')
 SHELL_CWD=os.environ.get("PWD")
@@ -28,7 +26,7 @@ PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
 
 #Helper functions
 def list_containers(*args, **kwargs):
-    return utils.list_items_in_root(*args, utils.FLAGS,CLASS_NAME,**kwargs)    
+    return utils.list_items_in_root(*args, FLAGS,CLASS_NAME,**kwargs)    
 
 def flatten(*args, **kwargs):
     return utils.flatten_list(*args, **kwargs)
@@ -319,7 +317,7 @@ for name in NAMES:
     UNIONOPTS="diff=RW"
     
     try:
-        container=Container(name,utils.FLAGS,UNIONOPTS)
+        container=Container(name,FLAGS,UNIONOPTS)
     except ContainerDoesNotExist:
         print(f"Container {name} does not exist")
         continue
