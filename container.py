@@ -308,9 +308,7 @@ class Container:
     def Watch(self):
         self.Class.watch()
 
-exec(f"utils.{CLASS_NAME}={CLASS_NAME}")
 NAMES=list_containers(utils.NAMES)
-
 for name in NAMES:
     
     BASE="void"
@@ -322,7 +320,7 @@ for name in NAMES:
         print(f"Container {name} does not exist")
         continue
         
-    utils.export_methods_globally(CLASS_NAME.lower(),globals())
+    utils.export_methods_globally(CLASS_NAME,globals())
     result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
     
     print_result(result)
