@@ -71,7 +71,7 @@ def remove_empty_folders_in_diff():
                 
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,shell=None):
+    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,_shell=None):
         self.Class = utils.Class(self,CLASS_NAME.lower())
         self.Class.class_init(_name,_flags,_function,_workdir)
         
