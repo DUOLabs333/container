@@ -7,6 +7,7 @@ import threading
 import time
 import ast
 import pwd, grp
+import json
 
 # < include utils.py >
 
@@ -187,9 +188,11 @@ class Container:
     def Workdir(self,*args, **kwargs):
         self.Class.workdir(*args, **kwargs)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
+        self.Update("workdir")
     
     def Env(self,*args, **kwargs):
         self.env=utils.add_environment_variable_to_string(self.env,*args, **kwargs)
+        self.Update("env")
     
     def User(self,user=""):
         if user=="":
@@ -208,9 +211,24 @@ class Container:
                 self.gid=user[1]
             else:
                 self.gid=pwd.getpwnam(user[1])[2]
+        self.Update(["uid","gid"])
     
     def Shell(self,shell):
-        self.shell=shell        
+        self.shell=shell
+        self.Update("shell")        
+    
+    def Update(self,keys):
+        if isinstance(keys,str):
+            keys=[keys]
+        
+        with open(f"{TEMPDIR}/container_{self.name}.lock","r") as f:
+            data=json.load(f)
+            
+        for key in keys:
+            data[key]=getattr(self,key)
+        
+        with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
+            json.dump(data,f)  
         
     #Commands      
     def Start(self):
@@ -225,7 +243,13 @@ class Container:
         #If child, run code, then exit 
         if pid==0:
             #Open a lock file so I can find it with lsof later
-            lock_file=open(f"{TEMPDIR}/container_{self.name}.lock","w+")
+            self.lock=open(f"{TEMPDIR}/container_{self.name}.lock","w+")
+            
+            with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
+                json.dump({},f)
+            
+            self.Update(["env","workdir", "uid","gid","shell"])
+            
             #Run *service.py
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
@@ -235,10 +259,6 @@ class Container:
             self.Run()
             self.Wait()
             exit()
-        if "--only-chroot" in self.flags:
-            return [self.Chroot(), self.Stop()]
-        elif "--and-chroot" in self.flags:
-            return [self.Chroot()]
         
     def Build(self):
         self.Stop()
@@ -273,13 +293,16 @@ class Container:
         return self.Class.restart()
     
     def Chroot(self):
-        if self.flags==[] and ("Stopped" in self.Status()):
-            self.flags+=['--only-chroot']
-            #Prevent zombie processes, as parent process is still up when forked process ends. So, just ignore it.
-            import signal
-            signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-            return [self.Start()]
-        os.system(f" {self.env}; sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged {self.shell}")
+        if "Stopped" in self.Status():
+            return ["Can't chroot into stopped container!"]
+        
+        with open(f"{TEMPDIR}/container_{self.name}.lock","r") as f:
+            data=json.load(f)
+            
+        for key in data:
+            setattr(self,key,data[key])
+            
+        os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
     
     
     def List(self):
