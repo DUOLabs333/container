@@ -303,6 +303,9 @@ class Container:
             setattr(self,key,data[key])
             
         os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
+        
+        if "--and-stop" in self.flags:
+            return [self.Stop()]
     
     
     def List(self):
