@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import ast
+import pwd, grp
 
 # < include utils.py >
 
@@ -71,7 +72,7 @@ def remove_empty_folders_in_diff():
                 
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None):
+    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None):
         self.Class = utils.Class(self,CLASS_NAME.lower())
         self.Class.class_init(_name,_flags,_function,_workdir)
         
@@ -85,6 +86,9 @@ class Container:
         self.mounted_special=False
             
         self.workdir=_workdir
+        
+        self.uid=utils.get_value(_uid,os.getuid())
+        self.gid=utils.get_value(_gid,os.getgid())
     
     #Functions
     def Run(self,command="",pipe=False):
@@ -123,7 +127,7 @@ class Container:
             else:
                 stdout=log_file
                 stderr=subprocess.STDOUT
-            return Shell(["sudo","nohup","chroot",f"--userspec={os.getuid()}:{os.getgid()}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
+            return Shell(["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged",f"{SHELL}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process="auxiliary"):
@@ -191,12 +195,30 @@ class Container:
     
     def Env(self,*args, **kwargs):
         self.env=utils.add_environment_variable_to_string(self.env,*args, **kwargs)
+    
+    def User(self,user=""):
+        if user=="":
+            self.uid=os.getuid()
+            self.gid=os.getgid()
+        else:
+            user=split_string_by_char(user,char=":")
+            if len(user)==1:
+                user.append(user[0])
+            if user[0].isnumeric():
+                self.uid=user[0]
+            else:
+                self.uid=pwd.getpwnam(user[0])[2]
+            
+            if user[1].isnumeric():
+                self.gid=user[1]
+            else:
+                self.gid=pwd.getpwnam(user[1])[2]
+            
         
     #Commands      
     def Start(self):
         
         self.Base(self.base)
-        
         if "Started" in self.Status():
             return f"Container {self.name} is already started"
         
