@@ -256,6 +256,9 @@ class Container:
     def Chroot(self):
         if self.flags==[] and ("Stopped" in self.Status()):
             self.flags+=['--only-chroot']
+            #Prevent zombie processes, as parent process is still up when forked process ends. So, just ignore it.
+            import signal
+            signal.signal(signal.SIGCHLD, signal.SIG_IGN)
             return [self.Start()]
         os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.name}/merged {SHELL}")
     
