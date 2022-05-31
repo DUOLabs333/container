@@ -319,7 +319,7 @@ for name in NAMES:
     UNIONOPTS="diff=RW"
     
     try:
-        container=Container(name,FLAGS,UNIONOPTS)
+        container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
     except ContainerDoesNotExist:
         print(f"Container {name} does not exist")
         continue
