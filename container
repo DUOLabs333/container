@@ -287,7 +287,7 @@ class Container:
             import signal
             signal.signal(signal.SIGCHLD, signal.SIG_IGN)
             return [self.Start()]
-        os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.name}/merged {SHELL}")
+        os.system(f" {self.env}; sudo chroot --userspec=$(id -u):$(id -g) {ROOT}/{self.name}/merged {self.shell}")
     
     
     def List(self):
