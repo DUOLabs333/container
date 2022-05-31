@@ -43,14 +43,8 @@ def flatten(*args, **kwargs):
 def print_result(*args, **kwargs):
     return utils.print_list(*args, **kwargs)
 
-def split_by_char(*args, **kwargs):
-    return utils.split_string_by_char(*args, **kwargs)
-    
-def shell_command(*args, **kwargs):
-    return utils.shell_command(*args, **kwargs)
-
 def convert_colon_string_to_directory(string):
-    string=split_by_char(string)
+    string=utils.split_string_by_char(string)
     if string[0]=="root":
         string=string[1]
     elif len(string)==1:
@@ -79,7 +73,7 @@ def remove_empty_folders_in_diff():
                 
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,shell=None):
+    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,_shell=None):
         self.Class = utils.Class(self,CLASS_NAME.lower())
         self.Class.class_init(_name,_flags,_function,_workdir)
         
@@ -111,15 +105,15 @@ class Container:
             
             #Prevent merged from being mounted multiple times
             if not os.path.ismount("merged"):
-                shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",f"{self.unionopts}","merged"])
+                utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",f"{self.unionopts}","merged"])
                
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc","sys","run"]:
                 if not os.path.ismount(f"merged/{dir}"):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
-                    #shell_command(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
-                    shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
+                    #utils.shell_command(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
+                    utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
                    
             self.mounted_special=True
             
@@ -136,7 +130,7 @@ class Container:
             else:
                 stdout=log_file
                 stderr=subprocess.STDOUT
-            return shell_command(["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged",f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
+            return utils.shell_command(["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged",f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process="auxiliary"):
@@ -145,14 +139,14 @@ class Container:
         elif process=="auxiliary":
             if not os.path.isdir("merged"):
                 return []
-            processes=[_[1:] for _ in shell_command(["lsof","-Fp","-w","--","merged"]).splitlines()]
+            processes=[_[1:] for _ in utils.shell_command(["lsof","-Fp","-w","--","merged"]).splitlines()]
             return list(map(int,processes))
     
     def Mount(self,IN,OUT):
         os.makedirs(f"diff{OUT}",exist_ok=True)
         if not os.path.ismount(f"diff{OUT}"):
             IN=convert_colon_string_to_directory(IN)
-            shell_command(["bindfs",IN,f"diff{OUT}"])
+            utils.shell_command(["bindfs",IN,f"diff{OUT}"])
     
     def Copy(self,src,dest):
         #Relative directory
@@ -175,11 +169,11 @@ class Container:
             dest=dest[:-1]
         
         #print(f"cp -a {src} {dest}")                   
-        cp_error=shell_command(["cp","-a",f"{src}",f"{dest}"])
+        cp_error=utils.shell_command(["cp","-a",f"{src}",f"{dest}"])
         if "cp: cannot create" in cp_error:
             #dest does not exist, so create its parent's folder
             os.makedirs(os.path.dirname(dest),exist_ok=True)
-            shell_command(["cp","-a",f"{src}",f"{dest}"])
+            utils.shell_command(["cp","-a",f"{src}",f"{dest}"])
 
     def Loop(self,*args, **kwargs):
         self.Class.loop(*args, **kwargs)
@@ -210,7 +204,7 @@ class Container:
             self.uid=os.getuid()
             self.gid=os.getgid()
         else:
-            user=split_string_by_char(user,char=":")
+            user=utils.split_string_by_char(user,char=":")
             if len(user)==1:
                 user.append(user[0])
             if user[0].isnumeric():
@@ -270,14 +264,14 @@ class Container:
             for dir in os.listdir("merged"):
                 if os.path.ismount(f"merged/{dir}"):
                 
-                    shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                    shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                    utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
                     
         
-        diff_directories=[split_by_char(_," ")[2] for _ in shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
         for dir in diff_directories:
-             shell_command(["umount","-l",f"{dir}"])
-        shell_command(["umount","-l","merged"])
+             utils.shell_command(["umount","-l",f"{dir}"])
+        utils.shell_command(["umount","-l","merged"])
     
     
         self.Class.cleanup_after_stop()
@@ -324,9 +318,9 @@ class Container:
 
     def Edit(self):
         if '--build' in self.flags:
-            shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/Containerfile"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/Containerfile"],stdout=None)
         else:
-            shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/container-compose.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/container-compose.py"],stdout=None)
 
     def Status(self):
         return self.Class.status()
@@ -340,7 +334,7 @@ class Container:
     
     def Delete(self):
         self.Stop()
-        shell_command(["sudo","rm","-rf",f"{ROOT}/{self.name}"])
+        utils.shell_command(["sudo","rm","-rf",f"{ROOT}/{self.name}"])
     
     def Watch(self):
         self.Class.watch()
