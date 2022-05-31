@@ -37,6 +37,7 @@ Env(value) --- set environment variable in container
 User(user) --- set user as working user. User must exist in host environment. You can also pass in numbers for the user and group.
 Commands:
 
+Shell(shell) --- set container shell to be shell
 
 Start --- runs container-compose.py
 
