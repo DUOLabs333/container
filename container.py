@@ -110,7 +110,6 @@ class Container:
                    
             self.mounted_special=True
             
-        
         with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_file:
             log_file.write(f"Command: {command}\n")
             log_file.flush()
@@ -218,6 +217,8 @@ class Container:
         self.Update("shell")        
     
     def Update(self,keys):
+        if self.function=="build":
+            return #No lock file when building --- no need for it
         if isinstance(keys,str):
             keys=[keys]
         
