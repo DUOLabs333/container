@@ -125,10 +125,10 @@ class Container:
             return utils.shell_command(["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged",f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
             
     
-    def Ps(self,process="auxiliary"):
-        if process=="main":
+    def Ps(self,process=None):
+        if process=="main" or ("--main" in self.flags):
             return self.Class.get_main_process()
-        elif process=="auxiliary":
+        elif process=="auxiliary" or ("--auxiliary" in self.flags):
             if not os.path.isdir("merged"):
                 return []
             processes=[_[1:] for _ in utils.shell_command(["lsof","-Fp","-w","--","merged"]).splitlines()]
