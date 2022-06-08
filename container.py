@@ -301,11 +301,20 @@ class Container:
         
         with open(f"{TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
-            
+        
+        command=None
+        for flag in self.flags:
+            if flag.startswith("--run="):
+                command=flag.split("=",1)[1]
+        
+        if not command:
+            command=""
+        else:
+            command=f"-c '{command}'"
         for key in data:
             setattr(self,key,data[key])
-            
-        os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
+        utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} {command}"""],stdout=None)
+        #os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
         
         if "--and-stop" in self.flags:
             return [self.Stop()]
