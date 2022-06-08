@@ -200,16 +200,18 @@ class Container:
         else:
             user=utils.split_string_by_char(user,char=":")
             if len(user)==1:
-                user.append(user[0])
+                user.append(user[0]) #Make group the same as user if it is not available
             if user[0].isnumeric():
                 self.uid=user[0]
             else:
-                self.uid=pwd.getpwnam(user[0])[2]
+                self.uid=int(self.Run(f"id -u {user[0]}",pipe=True))
+                #self.uid=pwd.getpwnam(user[0])[2]
             
             if user[1].isnumeric():
                 self.gid=user[1]
             else:
-                self.gid=pwd.getpwnam(user[1])[2]
+                self.gid=int(self.Run(f"id -g {user[1]}",pipe=True))
+                #self.gid=pwd.getpwnam(user[1])[2]
         self.Update(["uid","gid"])
     
     def Shell(self,shell):
