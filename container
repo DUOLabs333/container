@@ -193,7 +193,7 @@ class Container:
 
     def Layer(self,layer,mode="RO"):
         if self.function=="build":
-            if len(os.listdir(f"{ROOT}/Containers/{layer}/diff"))<2:
+            if len(os.listdir(f"{ROOT}/{layer}/diff"))<2:
                 utils.shell_command(["container","build",layer]) #Build layer if it doesn't exist
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         load_dependencies(layer)
