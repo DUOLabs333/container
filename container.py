@@ -242,8 +242,6 @@ class Container:
         
     #Commands      
     def Start(self):
-        
-        self.Base(self.base)
         if "Started" in self.Status():
             return f"Container {self.name} is already started"
         
@@ -252,6 +250,9 @@ class Container:
         
         #If child, run code, then exit 
         if pid==0:
+            self.Base(self.base)
+            with open(f"{TEMPDIR}/container_{self.name}.log","a+") as f:
+                pass
             #Open a lock file so I can find it with lsof later
             self.lock=open(f"{TEMPDIR}/container_{self.name}.lock","w+")
             
