@@ -6,7 +6,7 @@ import os
 import threading
 import time
 import ast
-import pwd, grp
+#import pwd, grp
 import json
 
 # < include utils.py >
@@ -39,11 +39,11 @@ def print_result(*args, **kwargs):
 def convert_colon_string_to_directory(string):
     string=utils.split_string_by_char(string)
     if string[0]=="root":
-        string=string[1]
+        string=string[1] #The directory is just the absolute path in the host
     elif len(string)==1:
-        string=string[0]
+        string=string[0] # No container was specified, so assume "root"
     else:
-        string=f"{ROOT}/{string[0]}/diff{string[1]}"
+        string=f"{ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
     string=os.path.expanduser(string)
     return string
     
@@ -85,6 +85,8 @@ class Container:
         self.gid=utils.get_value(_gid,os.getgid())
         
         self.shell=utils.get_value(_shell,"/bin/bash")
+        
+        self.temp_layers=[]
     
     #Functions
     def Run(self,command="",pipe=False):
@@ -105,6 +107,7 @@ class Container:
             for dir in ["dev","proc","sys","run"]:
                 if not os.path.ismount(f"merged/{dir}"):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
+                    #mount -o rbind works too
                     #utils.shell_command(f"sudo bindfs -o direct_io,allow_other,dev /{dir} merged/{dir}")
                     utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
                    
@@ -181,6 +184,10 @@ class Container:
         utils.wait(*args, **kwargs)
 
     def Layer(self,layer,mode="RO"):
+        if self.function=="build":
+            if len(os.listdir(f"{ROOT}/Containers/{layer}/diff"))<2:
+                utils.shell_command(["container","build",layer]) #Build layer if it doesn't exist
+                self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         load_dependencies(layer)
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
@@ -270,6 +277,8 @@ class Container:
          exec(code,globals(),locals())
         self.Stop()
         remove_empty_folders_in_diff()
+        for layer in self.temp_layers:
+            utils.shell_command(["container","clean",layer]) #Clean layer if it was temporary
         
        
     def Stop(self):
@@ -314,6 +323,8 @@ class Container:
         for key in data:
             setattr(self,key,data[key])
         utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} {command}"""],stdout=None)
+        
+        #For some reason, only os.system actually activates the PS1
         #os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
         
         if "--and-stop" in self.flags:
