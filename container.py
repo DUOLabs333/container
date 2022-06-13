@@ -144,7 +144,11 @@ class Container:
             return list(map(int,processes))
     
     def Mount(self,IN,OUT):
-        os.makedirs(f"diff{OUT}",exist_ok=True)
+        try:
+            os.makedirs(f"diff{OUT}",exist_ok=True)
+        except FileExistsError:
+            os.remove(f"diff{OUT}")
+            os.makedirs(f"diff{OUT}",exist_ok=True)
         if not os.path.ismount(f"diff{OUT}"):
             IN=convert_colon_string_to_directory(IN)
             utils.shell_command(["bindfs",IN,f"diff{OUT}"])
@@ -233,6 +237,7 @@ class Container:
     
     def Volume(self,name,path):
         name=utils.split_string_by_char(name,char=":")
+        
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
@@ -241,12 +246,17 @@ class Container:
         os.makedirs(volume_path,exist_ok=True)
         hash_of_name=hashlib.sha1(name[1].encode("utf-8")).hexdigest()
         first_item_in_volume=os.listdir(volume_path)[0]
-        self.Mount(volume_path,f"/{hash_of_name}")
-        try:
-            os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
-        except FileExistsError:
-            os.remove(f"diff/{path}")
-            os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+        
+        #If a directory, just mount it directly. If file, have to do some other things (maybe hardlink instead?)
+        if os.path.isdir(os.path.join(volume_path,first_item_in_volume)):
+            self.Mount(os.path.join(volume_path,first_item_in_volume),path)
+        else:
+            self.Mount(volume_path,f"/{hash_of_name}")
+            try:
+                os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+            except FileExistsError:
+                os.remove(f"diff/{path}")
+                os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
         
     def Update(self,keys):
         if self.function=="build":
