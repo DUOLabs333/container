@@ -243,20 +243,15 @@ class Container:
             name.insert(0,self.name)
         volume_path=f"{ROOT}/{name[0]}/Volumes/{name[1]}"
         
-        os.makedirs(volume_path,exist_ok=True)
-        hash_of_name=hashlib.sha1(name[1].encode("utf-8")).hexdigest()
-        first_item_in_volume=os.listdir(volume_path)[0]
-        
-        #If a directory, just mount it directly. If file, have to do some other things (maybe hardlink instead?)
-        if os.path.isdir(os.path.join(volume_path,first_item_in_volume)):
-            self.Mount(os.path.join(volume_path,first_item_in_volume),path)
+        #If a directory, just mount it directly. If file, hardlink it
+        if os.path.isdir(volume_path):
+            self.Mount(volume_path,path)
         else:
-            self.Mount(volume_path,f"/{hash_of_name}")
             try:
-                os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+                os.link(volume_path,f"diff/{path}")
             except FileExistsError:
                 os.remove(f"diff/{path}")
-                os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+                os.link(volume_path,f"diff/{path}")
         
     def Update(self,keys):
         if self.function=="build":
