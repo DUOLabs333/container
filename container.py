@@ -8,6 +8,7 @@ import time
 import ast
 #import pwd, grp
 import json
+import hashlib
 
 # < include utils.py >
 
@@ -37,7 +38,7 @@ def print_result(*args, **kwargs):
     return utils.print_list(*args, **kwargs)
 
 def convert_colon_string_to_directory(string):
-    string=utils.split_string_by_char(string)
+    string=utils.split_string_by_char(string,char=":")
     if string[0]=="root":
         string=string[1] #The directory is just the absolute path in the host
     elif len(string)==1:
@@ -230,6 +231,23 @@ class Container:
         self.shell=shell
         self.Update("shell")        
     
+    def Volume(self,name,path):
+        name=utils.split_string_by_char(name,char=":")
+        #Allow to use volumes from other containers
+        if len(name)==1:
+            name.insert(0,self.name)
+        volume_path=f"{ROOT}/{name[0]}/Volumes/{name[1]}"
+        
+        os.makedirs(volume_path,exist_ok=True)
+        hash_of_name=hashlib.sha1(name[1].encode("utf-8")).hexdigest()
+        first_item_in_volume=os.listdir(volume_path)[0]
+        self.Mount(volume_path,f"/{hash_of_name}")
+        try:
+            os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+        except FileExistsError:
+            os.remove(f"diff/{path}")
+            os.symlink(f"/{hash_of_name}/{first_item_in_volume}",f"diff/{path}")
+        
     def Update(self,keys):
         if self.function=="build":
             return #No lock file when building --- no need for it
@@ -300,7 +318,8 @@ class Container:
         
         diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
         for dir in diff_directories:
-             utils.shell_command(["umount","-l",f"{dir}"])
+             utils.shell_command(["umount","-l",dir])
+             utils.shell_command(["rm","-rf",dir])
         utils.shell_command(["umount","-l","merged"])
     
     
