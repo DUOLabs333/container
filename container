@@ -117,7 +117,7 @@ class Container:
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
                     if sys.platform=="darwin":
                         #MacOS doesn't have bind-mounts, and direct_io doesn't affect them
-                        utils.shell_command(["sudo", "bindfs", "-o", "direct_io,allow_other,dev", f"/{dir}", f"merged/{dir}")
+                        utils.shell_command(["sudo", "bindfs", "-o", "direct_io,allow_other,dev", f"/{dir}", f"merged/{dir}"])
                     elif sys.platform=="cygwin":
                         #Cygwin doesn't have rbind
                         utils.shell_command(["sudo","mount","-o","bind",f"/{dir}",f"merged/{dir}"])
