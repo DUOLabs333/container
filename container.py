@@ -88,6 +88,8 @@ class Container:
         self.shell=utils.get_value(_shell,"/bin/bash")
         
         self.temp_layers=[]
+        
+        self.hardlinks=[]
     
     #Functions
     def Run(self,command="",pipe=False):
@@ -252,6 +254,7 @@ class Container:
             except FileExistsError:
                 os.remove(f"diff/{path}")
                 os.link(volume_path,f"diff/{path}")
+            self.hardlinks.append(f"diff/{path}")
         
     def Update(self,keys):
         if self.function=="build":
@@ -327,7 +330,9 @@ class Container:
              utils.shell_command(["rm","-rf",dir])
         utils.shell_command(["umount","-l","merged"])
     
-    
+        
+        for hardlink in self.hardlinks:
+            os.remove(hardlink) #Remove volume hardlinks when done
         self.Class.cleanup_after_stop()
         return output
 
