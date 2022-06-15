@@ -62,7 +62,7 @@ def load_dependencies(layer):
        for node in ast.iter_child_nodes(root):
            if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
                function=node.value.func.id
-               if function in ["Layer","Base","Env"]:
+               if function in ["Layer","Base","Env","Shell"]:
                    arguments=[eval(ast.unparse(val)) for val in node.value.args]
                    globals()[function](*arguments)
 
@@ -199,7 +199,7 @@ class Container:
         #Effectively make subsequent Bases a no-op
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.base=base
-    
+        load_dependencies(base)
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
 
