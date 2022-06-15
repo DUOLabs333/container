@@ -9,6 +9,7 @@ import ast
 #import pwd, grp
 import json
 import hashlib
+import signal
 
 # < include utils.py >
 
@@ -292,6 +293,31 @@ class Container:
             
             self.Update(["env","workdir", "uid","gid","shell"])
             
+            
+            def on_Stop(a,b):
+                for pid in self.Ps("auxiliary"):
+                    utils.kill_process_gracefully(pid)
+                
+                #Unmount dev,proc, etc. if directory exists
+                if os.path.isdir("merged"):
+                    for dir in os.listdir("merged"):
+                        if os.path.ismount(f"merged/{dir}"):
+                        
+                            utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                            utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                            
+                
+                diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
+                for dir in diff_directories:
+                     utils.shell_command(["umount","-l",dir])
+                     utils.shell_command(["rm","-rf",dir])
+                utils.shell_command(["umount","-l","merged"])
+            
+                
+                for hardlink in self.hardlinks:
+                    os.remove(hardlink) #Remove volume hardlinks when done
+                exit()
+            signal.signal(signal.SIGTERM,on_Stop)
             #Run *service.py
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
@@ -314,27 +340,7 @@ class Container:
         
        
     def Stop(self):
-        output=[self.Class.stop()]
-        #Unmount dev,proc, etc. if directory exists
-        if os.path.isdir("merged"):
-            for dir in os.listdir("merged"):
-                if os.path.ismount(f"merged/{dir}"):
-                
-                    utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                    utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
-                    
-        
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
-        for dir in diff_directories:
-             utils.shell_command(["umount","-l",dir])
-             utils.shell_command(["rm","-rf",dir])
-        utils.shell_command(["umount","-l","merged"])
-    
-        
-        for hardlink in self.hardlinks:
-            os.remove(hardlink) #Remove volume hardlinks when done
-        self.Class.cleanup_after_stop()
-        return output
+        return [self.Class.stop()]
 
     def Restart(self):
         return self.Class.restart()
