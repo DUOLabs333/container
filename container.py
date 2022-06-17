@@ -49,7 +49,7 @@ def convert_colon_string_to_directory(string):
     string=os.path.expanduser(string)
     return string
     
-def load_dependencies(layer):
+def load_dependencies(self,layer):
     with open(f"{ROOT}/{layer}/container-compose.py") as fh:        
        root = ast.parse(fh.read())
        for node in ast.iter_child_nodes(root):
@@ -57,7 +57,7 @@ def load_dependencies(layer):
                function=node.value.func.id
                if function in ["Layer","Base","Env","Shell"]:
                    arguments=[eval(ast.unparse(val)) for val in node.value.args]
-                   globals()[function](*arguments)
+                   self.globals[function](*arguments)
 
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
@@ -192,7 +192,7 @@ class Container:
         #Effectively make subsequent Bases a no-op
         if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
             self.base=base
-        load_dependencies(base)
+        load_dependencies(self,base)
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
 
@@ -203,7 +203,7 @@ class Container:
                 self.__class__(layer,_function="build").Build()
                 #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-        load_dependencies(layer)
+        load_dependencies(self,layer)
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
     
     def Workdir(self,*args, **kwargs):
@@ -273,7 +273,29 @@ class Container:
         
         with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
             json.dump(data,f)  
+    def Exit(self,a,b):
+        for pid in self.Ps("auxiliary"):
+            utils.kill_process_gracefully(pid)
         
+        #Unmount dev,proc, etc. if directory exists
+        if os.path.isdir("merged"):
+            for dir in os.listdir("merged"):
+                if os.path.ismount(f"merged/{dir}"):
+                
+                    utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                    utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    
+        
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
+        for dir in diff_directories:
+             utils.shell_command(["umount","-l",dir])
+             utils.shell_command(["rm","-rf",dir])
+        utils.shell_command(["umount","-l","merged"])
+    
+        
+        for hardlink in self.hardlinks:
+            os.remove(hardlink) #Remove volume hardlinks when done
+        exit()       
     #Commands      
     def Start(self):
         if "Started" in self.Status():
@@ -295,35 +317,11 @@ class Container:
             
             self.Update(["env","workdir", "uid","gid","shell"])
             
-            
-            def on_Stop(a,b):
-                for pid in self.Ps("auxiliary"):
-                    utils.kill_process_gracefully(pid)
-                
-                #Unmount dev,proc, etc. if directory exists
-                if os.path.isdir("merged"):
-                    for dir in os.listdir("merged"):
-                        if os.path.ismount(f"merged/{dir}"):
-                        
-                            utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                            utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
-                            
-                
-                diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
-                for dir in diff_directories:
-                     utils.shell_command(["umount","-l",dir])
-                     utils.shell_command(["rm","-rf",dir])
-                utils.shell_command(["umount","-l","merged"])
-            
-                
-                for hardlink in self.hardlinks:
-                    os.remove(hardlink) #Remove volume hardlinks when done
-                exit()
-            signal.signal(signal.SIGTERM,on_Stop)
+            signal.signal(signal.SIGTERM,self.Exit)
             #Run *service.py
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
-            exec(code,globals(),locals())
+            exec(code,self.globals,locals())
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
@@ -332,15 +330,18 @@ class Container:
         
     def Build(self):
         self.Stop()
+        signal.signal(signal.SIGTERM,self.Exit)
+        signal.signal(signal.SIGINT,self.Exit)
         with open("Containerfile.py") as f:
          code = compile(f.read(), 'Containerfile.py', 'exec')
-         exec(code,globals(),locals())
+         exec(code,self.globals,locals())
         self.Stop()
         remove_empty_folders_in_diff()
         for layer in self.temp_layers:
             #Clean layer if it was temporary
             self.__class__(layer,_function="clean").Clean()
             #utils.shell_command(["container","clean",layer])
+        self.Exit(1,2)
         
        
     def Stop(self):
@@ -436,8 +437,6 @@ for name in NAMES:
     except ContainerDoesNotExist:
         print(f"Container {name} does not exist")
         continue
-        
-    utils.export_methods_globally(CLASS_NAME)
     result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
     
     print_result(result)
