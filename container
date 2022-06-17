@@ -207,7 +207,9 @@ class Container:
     def Layer(self,layer,mode="RO"):
         if self.function=="build":
             if len(os.listdir(f"{ROOT}/{layer}/diff"))<2:
-                utils.shell_command(["container","build",layer]) #Build layer if it doesn't exist
+                #Build layer if it doesn't exist
+                self.__class__(layer,_function="build").Build()
+                #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         load_dependencies(layer)
         self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
@@ -344,7 +346,9 @@ class Container:
         self.Stop()
         remove_empty_folders_in_diff()
         for layer in self.temp_layers:
-            utils.shell_command(["container","clean",layer]) #Clean layer if it was temporary
+            #Clean layer if it was temporary
+            self.__class__(layer,_function="clean").Clean()
+            #utils.shell_command(["container","clean",layer])
         
        
     def Stop(self):
