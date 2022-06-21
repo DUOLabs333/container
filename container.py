@@ -19,14 +19,10 @@ CLASS_NAME="Container"
 utils.ROOT=ROOT=utils.get_root_directory(CLASS_NAME)
 utils.TEMPDIR=TEMPDIR=utils.get_tempdir()
 
-NAMES,FLAGS,FUNCTION=utils.extract_arguments()
-
-utils.NAMES=NAMES
 utils.ROOT=ROOT
 utils.GLOBALS=globals()
 
 SHELL_CWD=os.environ.get("PWD")
-PATH="PATH=/bin:/usr/sbin:/sbin:/usr/bin"
 
 #Helper functions
 def list_containers(*args, **kwargs):
@@ -76,7 +72,7 @@ class Container:
         
         self.unionopts=utils.get_value(_unionopts,"diff=RW")
         
-        self.env=utils.get_value(_env,f"export {PATH}")
+        self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin")
         
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
@@ -116,7 +112,7 @@ class Container:
                         utils.shell_command(["sudo", "bindfs", "-o", "direct_io,allow_other,dev", f"/{dir}", f"merged/{dir}"])
                     elif sys.platform=="cygwin":
                         #Cygwin doesn't have rbind
-                        utils.shell_command(["sudo","mount","-o","bind",f"/{dir}",f"merged/{dir}"])
+                        utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
                     else:
                         utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
                    
@@ -272,7 +268,8 @@ class Container:
             data[key]=getattr(self,key)
         
         with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
-            json.dump(data,f)  
+            json.dump(data,f)
+             
     def Exit(self,a,b):
         for pid in self.Ps("auxiliary"):
             utils.kill_process_gracefully(pid)
@@ -425,21 +422,25 @@ class Container:
     
     def Watch(self):
         self.Class.watch()
-
-NAMES=list_containers(utils.NAMES)
-for name in NAMES:
+        
+if __name__ == "__main__":
+    NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     
-    BASE="void"
-    UNIONOPTS="diff=RW"
-    
-    try:
-        container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
-    except ContainerDoesNotExist:
-        print(f"Container {name} does not exist")
-        continue
-    result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
-    
-    print_result(result)
+    utils.NAMES=NAMES
+    NAMES=list_containers(utils.NAMES)
+    for name in NAMES:
+        
+        BASE="void"
+        UNIONOPTS="diff=RW"
+        
+        try:
+            container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
+        except ContainerDoesNotExist:
+            print(f"Container {name} does not exist")
+            continue
+        result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
+        
+        print_result(result)
         
 
     
