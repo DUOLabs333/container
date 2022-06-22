@@ -315,7 +315,7 @@ class Container:
             self.Update(["env","workdir", "uid","gid","shell"])
             
             signal.signal(signal.SIGTERM,self.Exit)
-            #Run *service.py
+            #Run container*.py
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
             exec(code,self.globals,locals())
