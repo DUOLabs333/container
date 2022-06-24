@@ -104,7 +104,7 @@ class Container:
                
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
-            for dir in ["dev","proc","sys","run"]:
+            for dir in ["dev","proc","sys"]:
                 if not os.path.ismount(f"merged/{dir}"):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
                     if sys.platform=="darwin":
@@ -426,16 +426,14 @@ class Container:
 if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     
-    utils.NAMES=NAMES
-    NAMES=list_containers(utils.NAMES)
-    for name in NAMES:
+    for name in list_containers(NAMES):
         
         BASE="void"
         UNIONOPTS="diff=RW"
         
         try:
             container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
-        except ContainerDoesNotExist:
+        except utils.DoesNotExist:
             print(f"Container {name} does not exist")
             continue
         result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
