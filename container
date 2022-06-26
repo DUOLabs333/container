@@ -440,11 +440,11 @@ if __name__ == "__main__":
         UNIONOPTS="diff=RW"
         
         try:
-            container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
+            item=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
         except utils.DoesNotExist:
             print(f"Container {name} does not exist")
             continue
-        result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
+        result=utils.execute_class_method(item,FUNCTION)
         
         print_result(result)
         
