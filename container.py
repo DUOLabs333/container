@@ -14,20 +14,12 @@ import signal
 # < include utils.py >
 
 import utils
-CLASS_NAME="Container"
 
-utils.ROOT=ROOT=utils.get_root_directory(CLASS_NAME)
-utils.TEMPDIR=TEMPDIR=utils.get_tempdir()
-
-utils.ROOT=ROOT
 utils.GLOBALS=globals()
 
 SHELL_CWD=os.environ.get("PWD")
 
-#Helper functions
-def list_containers(*args, **kwargs):
-    return utils.list_items_in_root(*args, FLAGS,CLASS_NAME,**kwargs)    
-
+#Helper functions  
 def flatten(*args, **kwargs):
     return utils.flatten_list(*args, **kwargs)
 
@@ -65,7 +57,7 @@ def remove_empty_folders_in_diff():
 ContainerDoesNotExist=utils.DoesNotExist
 class Container:
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,_shell=None):
-        self.Class = utils.Class(self,CLASS_NAME.lower())
+        self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_function,_workdir)
         
         self.base="void"
@@ -118,7 +110,7 @@ class Container:
                    
             self.mounted_special=True
             
-        with open(f"{TEMPDIR}/container_{self.name}.log","a+") as log_file:
+        with open(f"{utils.TEMPDIR}/container_{self.name}.log","a+") as log_file:
             log_file.write(f"Command: {command}\n")
             log_file.flush()
             
@@ -261,13 +253,13 @@ class Container:
         if isinstance(keys,str):
             keys=[keys]
         
-        with open(f"{TEMPDIR}/container_{self.name}.lock","r") as f:
+        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
             
         for key in keys:
             data[key]=getattr(self,key)
         
-        with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
+        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+") as f:
             json.dump(data,f)
              
     def Exit(self,a,b):
@@ -304,12 +296,12 @@ class Container:
         #If child, run code, then exit 
         if pid==0:
             self.Base(self.base)
-            with open(f"{TEMPDIR}/container_{self.name}.log","a+") as f:
+            with open(f"{utils.TEMPDIR}/container_{self.name}.log","a+") as f:
                 pass
             #Open a lock file so I can find it with lsof later
-            self.lock=open(f"{TEMPDIR}/container_{self.name}.lock","w+")
+            self.lock=open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+")
             
-            with open(f"{TEMPDIR}/container_{self.name}.lock","w+") as f:
+            with open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+") as f:
                 json.dump({},f)
             
             self.Update(["env","workdir", "uid","gid","shell"])
@@ -351,7 +343,7 @@ class Container:
         if "Stopped" in self.Status():
             return ["Can't chroot into stopped container!"]
         
-        with open(f"{TEMPDIR}/container_{self.name}.lock","r") as f:
+        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
         
         command=None
@@ -422,21 +414,25 @@ class Container:
     
     def Watch(self):
         self.Class.watch()
-        
+
+utils.CLASS=Container
+
+utils.ROOT=ROOT=utils.get_root_directory()  
+   
 if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     
-    for name in list_containers(NAMES):
+    for name in utils.list_items_in_root(NAMES, FLAGS):
         
         BASE="void"
         UNIONOPTS="diff=RW"
         
         try:
-            container=Container(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
+            item=utils.CLASS(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
         except utils.DoesNotExist:
             print(f"Container {name} does not exist")
             continue
-        result=utils.execute_class_method(eval(f"{CLASS_NAME.lower()}"),FUNCTION)
+        result=utils.execute_class_method(item,FUNCTION)
         
         print_result(result)
         
