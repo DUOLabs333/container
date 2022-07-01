@@ -96,7 +96,7 @@ class Container:
                
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
-            for dir in ["dev","proc","sys"]:
+            for dir in ["dev","proc"]:
                 if not os.path.ismount(f"merged/{dir}"):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
                     if sys.platform=="darwin":
