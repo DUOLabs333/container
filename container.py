@@ -10,6 +10,7 @@ import ast
 import json
 import hashlib
 import signal
+import shutil
 
 # < include utils.py >
 
@@ -45,7 +46,7 @@ def load_dependencies(self,layer):
                function=node.value.func.id
                if function in ["Layer","Base","Env","Shell"]:
                    arguments=[eval(ast.unparse(val)) for val in node.value.args]
-                   self.globals[function](*arguments)
+                   getattr(self,function)(*arguments) #Run function
 
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
@@ -122,7 +123,12 @@ class Container:
             else:
                 stdout=log_file
                 stderr=subprocess.STDOUT
-            return utils.shell_command(["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged",f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"],stdout=stdout,stderr=stderr)
+            if not shutil.which("unshare"): # Unshare does not exist, so use chroot
+                chroot_command = ["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
+            else:
+                chroot_command = ["nohup","unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
+            chroot_command+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
+            return utils.shell_command(chroot_command,stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process=None):
@@ -346,18 +352,15 @@ class Container:
         with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
         
-        command=None
+        for key in data:
+            setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
+            
+        command=self.shell #By default, run the shell
         for flag in self.flags:
             if flag.startswith("--run="):
                 command=flag.split("=",1)[1]
         
-        if not command:
-            command=""
-        else:
-            command=f"-c '{command}'"
-        for key in data:
-            setattr(self,key,data[key])
-        utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} {command}"""],stdout=None)
+        utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} -c '{command}' """],stdout=None)
         
         #For some reason, only os.system doesn't use the PS1
         #os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
