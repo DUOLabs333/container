@@ -70,17 +70,20 @@ class Container:
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
             
+        self.namespaces=bool(shutil.which("unshare")) #Check if namespaces is enabled
         self.workdir=_workdir
         
-        self.uid=utils.get_value(_uid,os.getuid())
-        self.gid=utils.get_value(_gid,os.getgid())
+        
+        self.uid=utils.get_value(_uid,0 if self.namespaces else os.getuid())
+        self.gid=utils.get_value(_gid,0 if self.namespaces else os.getgid())
         
         self.shell=utils.get_value(_shell,"/bin/bash")
         
         self.temp_layers=[]
         
         self.hardlinks=[]
-    
+        
+        
     #Functions
     def Run(self,command="",pipe=False):
         if self.function=="build":
@@ -123,10 +126,11 @@ class Container:
             else:
                 stdout=log_file
                 stderr=subprocess.STDOUT
-            if not shutil.which("unshare"): # Unshare does not exist, so use chroot
+            if not self.namespaces: # Unshare does not exist, so use chroot
                 chroot_command = ["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
             else:
                 chroot_command = ["nohup","unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
+                
             chroot_command+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
             return utils.shell_command(chroot_command,stdout=stdout,stderr=stderr)
             
@@ -290,7 +294,8 @@ class Container:
         
         for hardlink in self.hardlinks:
             os.remove(hardlink) #Remove volume hardlinks when done
-        exit()       
+        exit()
+               
     #Commands      
     def Start(self):
         if "Started" in self.Status():
@@ -360,7 +365,14 @@ class Container:
             if flag.startswith("--run="):
                 command=flag.split("=",1)[1]
         
-        utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} -c '{command}' """],stdout=None)
+        if not self.namespaces: # Unshare does not exist, so use chroot
+            chroot_command = ["sudo","chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
+        else:
+            chroot_command = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
+            
+        chroot_command+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
+        utils.shell_command(chroot_command,stdout=None)
+        #utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} -c '{command}' """],stdout=None)
         
         #For some reason, only os.system doesn't use the PS1
         #os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
