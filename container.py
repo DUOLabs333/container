@@ -300,9 +300,7 @@ class Container:
             json.dump(data,f)
              
     def Exit(self,a,b):
-        while self.Ps("auxiliary")!=[]: #If new processes were started during an iteration, go over it again, until you killed them all
-            for pid in self.Ps("auxiliary"):
-                utils.kill_process_gracefully(pid)
+        self.Class.kill_auxiliary_processes()
         
         #Unmount dev,proc, etc. if directory exists
         if os.path.isdir("merged"):
