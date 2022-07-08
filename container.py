@@ -11,6 +11,9 @@ import json
 import hashlib
 import signal
 import shutil
+import random
+import types
+import getpass
 
 # < include utils.py >
 
@@ -48,6 +51,19 @@ def load_dependencies(self,layer):
                    arguments=[eval(ast.unparse(val)) for val in node.value.args]
                    getattr(self,function)(*arguments) #Run function
 
+def chroot_command(self,command):
+    if not self.namespaces: # Unshare does not exist, so use chroot
+        result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
+    else:
+        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
+        
+    result+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
+    
+    if not self.namespaces:
+        result=["sudo"]+result
+    else:
+        result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
+    return result
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
@@ -83,6 +99,21 @@ class Container:
         
         self.hardlinks=[]
         
+        if self.namespaces: #Network namespaces
+            self.netns=f"{self.name}-netns"
+            self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.name}-veth0"),host=types.SimpleNamespace(name=f"{self.name}-veth1"))
+            
+            while True:
+                cidr=[random.randint(0,255),random.randint(0,255)]
+                if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
+                    continue
+                else:
+                    self.veth_pair.host.cidr=f"{cidr[0]}.{cidr[1]}.0.1/24"
+                    self.veth_pair.netns.cidr=f"{cidr[0]}.{cidr[1]}.0.2/24"
+                    break
+            
+            self.ports=[]
+        
         
     #Functions
     def Run(self,command="",pipe=False):
@@ -104,8 +135,9 @@ class Container:
                 if not os.path.ismount(f"merged/{dir}"):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
                     if sys.platform=="darwin":
-                        #MacOS doesn't have bind-mounts, and direct_io doesn't affect them
-                        utils.shell_command(["sudo", "bindfs", "-o", "direct_io,allow_other,dev", f"/{dir}", f"merged/{dir}"])
+                        #MacOS doesn't have bind-mounts
+                        fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
+                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
                     elif sys.platform=="cygwin":
                         #Cygwin doesn't have rbind
                         utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
@@ -126,13 +158,8 @@ class Container:
             else:
                 stdout=log_file
                 stderr=subprocess.STDOUT
-            if not self.namespaces: # Unshare does not exist, so use chroot
-                chroot_command = ["sudo","nohup","chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
-            else:
-                chroot_command = ["nohup","unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
-                
-            chroot_command+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
-            return utils.shell_command(chroot_command,stdout=stdout,stderr=stderr)
+            
+            return utils.shell_command(chroot_command(self,command),stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process=None):
@@ -141,7 +168,7 @@ class Container:
         elif process=="auxiliary" or ("--auxiliary" in self.flags):
             if not os.path.isdir("merged"):
                 return []
-            processes=[_[1:] for _ in utils.shell_command(["lsof","-Fp","-w","--","merged"]).splitlines()]
+            processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
             return list(map(int,processes))
     
     def Mount(self,IN,OUT):
@@ -273,8 +300,9 @@ class Container:
             json.dump(data,f)
              
     def Exit(self,a,b):
-        for pid in self.Ps("auxiliary"):
-            utils.kill_process_gracefully(pid)
+        while self.Ps("auxiliary")!=[]: #If new processes were started during an iteration, go over it again, until you killed them all
+            for pid in self.Ps("auxiliary"):
+                utils.kill_process_gracefully(pid)
         
         #Unmount dev,proc, etc. if directory exists
         if os.path.isdir("merged"):
@@ -294,8 +322,22 @@ class Container:
         
         for hardlink in self.hardlinks:
             os.remove(hardlink) #Remove volume hardlinks when done
+        
+        if self.namespaces:
+            utils.shell_command(["sudo","ip","netns","del",self.netns])
+        
+        for port in self.ports:
+            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",port]).splitlines()])):
+                utils.kill_process_gracefully(pid) #Kill socat(s)
         exit()
-               
+        
+    def Port(self,_from,_to):
+       if self.namespaces:
+           utils.shell_command(["socat", f"tcp-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "tcp-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+       else:
+           utils.shell_command(["socat", f"tcp-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"tcp:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+       self.port.append(_to)
+            
     #Commands      
     def Start(self):
         if "Started" in self.Status():
@@ -318,7 +360,29 @@ class Container:
             self.Update(["env","workdir", "uid","gid","shell"])
             
             signal.signal(signal.SIGTERM,self.Exit)
-            #Run container*.py
+            
+            if self.namespaces: #Start network namespace
+                internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
+                commands=[
+                    ['ip', 'netns', 'add', self.netns],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
+                    ['ip', 'link', 'add', self.veth_pair.host.name, 'type', 'veth', 'peer', 'name', self.veth_pair.netns.name],
+                    ['ip', 'link', 'set', self.veth_pair.netns.name, 'netns', self.netns],
+                    ['ip', 'addr', 'add', self.veth_pair.host.cidr, 'dev', self.veth_pair.host.name],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'addr', 'add', self.veth_pair.netns.cidr, 'dev', self.veth_pair.netns.name],
+                    ['ip', 'link', 'set', self.veth_pair.host.name, 'up'],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', self.veth_pair.netns.name, 'up'],
+                    ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
+                    ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair.host.name, '-j', 'ACCEPT'],
+                    ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair.host.name, '-j', 'ACCEPT'],
+                    ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair.netns.cidr, '-o', internet_interface, '-j', 'MASQUERADE'],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair.host.cidr[:-3]]
+                    ]
+                 
+                for command in commands:
+                    utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
+                    
+            #Run container-compose.py
             with open(f"{ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
             exec(code,self.globals,locals())
@@ -352,7 +416,7 @@ class Container:
     
     def Chroot(self):
         if "Stopped" in self.Status():
-            return ["Can't chroot into stopped container!"]
+            stopped=True
         
         with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
@@ -364,18 +428,12 @@ class Container:
         for flag in self.flags:
             if flag.startswith("--run="):
                 command=flag.split("=",1)[1]
-        
-        if not self.namespaces: # Unshare does not exist, so use chroot
-            chroot_command = ["sudo","chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
-        else:
-            chroot_command = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
-            
-        chroot_command+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
-        utils.shell_command(chroot_command,stdout=None)
-        #utils.shell_command(["sudo","chroot",f"--userspec={self.uid}:{self.gid}",f"{ROOT}/{self.name}/merged","/bin/sh","-c",f"""{self.env}; cd {self.workdir}; {self.shell} -c '{command}' """],stdout=None)
-        
-        #For some reason, only os.system doesn't use the PS1
-        #os.system(f"sudo chroot --userspec={self.uid}:{self.gid} {ROOT}/{self.name}/merged /bin/sh -c '{self.env}; cd {self.workdir}; {self.shell}'")
+        if stopped:
+            self.Start()
+            while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
+                pass
+            utils.shell_command(chroot_command(self,command),stdout=None)
+            self.Stop()
         
         if "--and-stop" in self.flags:
             return [self.Stop()]
