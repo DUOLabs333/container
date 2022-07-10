@@ -52,18 +52,23 @@ def load_dependencies(self,layer):
                    getattr(self,function)(*arguments) #Run function
 
 def chroot_command(self,command):
-    if not self.namespaces: # Unshare does not exist, so use chroot
-        result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"]
+    if self.namespaces:
+        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it  
     else:
-        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it
+        result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"] # Unshare does not exist, so use chroot
         
     result+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
     
-    if not self.namespaces:
+    
+    if self.namespaces:
+        if not self.build:
+            result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
+    
+    if sys.platform!="cygwin" and not self.namespaces:
         result=["sudo"]+result
-    else:
-        result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
+        
     return result
+    
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
@@ -71,9 +76,9 @@ def remove_empty_folders_in_diff():
             if len(os.listdir(path)) == 0:
                 os.rmdir(path)
                 
-ContainerDoesNotExist=utils.DoesNotExist
+
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_function=None,_uid=None,_gid=None,_shell=None):
+    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_function,_workdir)
         
@@ -99,6 +104,8 @@ class Container:
         
         self.hardlinks=[]
         
+        self.build=False
+        
         if self.namespaces: #Network namespaces
             self.netns=f"{self.name}-netns"
             self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.name}-veth0"),host=types.SimpleNamespace(name=f"{self.name}-veth1"))
@@ -117,7 +124,7 @@ class Container:
         
     #Functions
     def Run(self,command="",pipe=False):
-        if self.function=="build":
+        if self.build:
             if command.strip()!="":
                 print(f"Command: {command}")
         self.Base(self.base)
@@ -222,7 +229,7 @@ class Container:
         utils.wait(*args, **kwargs)
 
     def Layer(self,layer,mode="RO"):
-        if self.function=="build":
+        if self.build:
             if len(os.listdir(f"{ROOT}/{layer}/diff"))<2:
                 #Build layer if it doesn't exist
                 self.__class__(layer,_function="build").Build()
@@ -285,7 +292,7 @@ class Container:
             self.hardlinks.append(f"diff/{path}")
         
     def Update(self,keys):
-        if self.function=="build":
+        if self.build:
             return #No lock file when building --- no need for it
         if isinstance(keys,str):
             keys=[keys]
@@ -374,7 +381,8 @@ class Container:
                     ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair.host.name, '-j', 'ACCEPT'],
                     ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair.host.name, '-j', 'ACCEPT'],
                     ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair.netns.cidr, '-o', internet_interface, '-j', 'MASQUERADE'],
-                    ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair.host.cidr[:-3]]
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair.host.cidr[:-3]],
+                    ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
                     ]
                  
                 for command in commands:
@@ -392,6 +400,7 @@ class Container:
         
     def Build(self):
         self.Stop()
+        self.build=True
         signal.signal(signal.SIGTERM,self.Exit)
         signal.signal(signal.SIGINT,self.Exit)
         with open("Containerfile.py") as f:
@@ -413,9 +422,9 @@ class Container:
         return self.Class.restart()
     
     def Chroot(self):
+        stopped=False
         if "Stopped" in self.Status():
             stopped=True
-        
         with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
             data=json.load(f)
         
@@ -430,7 +439,8 @@ class Container:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
-            utils.shell_command(chroot_command(self,command),stdout=None)
+        utils.shell_command(chroot_command(self,command),stdout=None)
+        if stopped:
             self.Stop()
         
         if "--and-stop" in self.flags:
@@ -499,7 +509,7 @@ if __name__ == "__main__":
         UNIONOPTS="diff=RW"
         
         try:
-            item=utils.CLASS(name,_flags=FLAGS,_unionopts=UNIONOPTS,_function=FUNCTION)
+            item=utils.CLASS(name,_flags=FLAGS,_unionopts=UNIONOPTS)
         except utils.DoesNotExist:
             print(f"Container {name} does not exist")
             continue
