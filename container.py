@@ -81,7 +81,7 @@ class Container:
         
         self.unionopts=utils.get_value(_unionopts,"diff=RW")
         
-        self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin")
+        self.env=utils.get_value(_env,f"""export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo "~$(whoami)")""")
         
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
@@ -179,7 +179,7 @@ class Container:
             os.makedirs(f"diff{OUT}",exist_ok=True)
         if not os.path.ismount(f"diff{OUT}"):
             IN=convert_colon_string_to_directory(IN)
-            utils.shell_command(["bindfs",IN,f"diff{OUT}"])
+            utils.shell_command(["bindfs",IN,f"diff{OUT}"]) #Only use bindfs 1.15.1
     
     def Copy(self,src,dest):
         #Relative directory
@@ -325,7 +325,7 @@ class Container:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
         
         for port in self.ports:
-            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",port]).splitlines()])):
+            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
                 utils.kill_process_gracefully(pid) #Kill socat(s)
         exit()
         
@@ -334,7 +334,7 @@ class Container:
            utils.shell_command(["socat", f"tcp-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "tcp-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
        else:
            utils.shell_command(["socat", f"tcp-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"tcp:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
-       self.port.append(_to)
+       self.ports.append(_to)
             
     #Commands      
     def Start(self):
