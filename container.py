@@ -78,9 +78,9 @@ def remove_empty_folders_in_diff():
                 
 
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
+    def __init__(self,_name,_flags=None,_unionopts="diff=RW",_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         self.Class = utils.Class(self)
-        self.Class.class_init(_name,_flags,_function,_workdir)
+        self.Class.class_init(_name,_flags,_workdir)
         
         self.base="void"
         
@@ -504,15 +504,12 @@ if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     
     for name in utils.list_items_in_root(NAMES, FLAGS):
-        
-        BASE="void"
-        UNIONOPTS="diff=RW"
-        
-        try:
-            item=utils.CLASS(name,_flags=FLAGS,_unionopts=UNIONOPTS)
-        except utils.DoesNotExist:
-            print(f"Container {name} does not exist")
-            continue
+        if FUNCTION!="init": #If you're running Init, skip this check, as you know it doesn't exist yet.
+            try:
+                item=utils.CLASS(name,FLAGS)
+            except utils.DoesNotExist:
+                print(f"Container {name} does not exist")
+                continue
         result=utils.execute_class_method(item,FUNCTION)
         
         print_result(result)
