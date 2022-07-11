@@ -259,6 +259,8 @@ class Container:
         self.Update("env")
     
     def User(self,user=""):
+        if not self.namespaces.user:
+            return
         if user=="":
             self.uid=os.getuid()
             self.gid=os.getgid()
@@ -347,9 +349,9 @@ class Container:
                 return #If the ports are the same, don't socat it, since it will take up the port.
         for proto in ["tcp","udp"]:
             if self.namespaces.net:
-               utils.shell_command(["socat", f"{proto}-listen:{_to},fork,nodelay,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"'"""], stdout=subprocess.DEVNULL,block=False)
+               utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
             else:
-               utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,nodelay,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+               utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)
             
     #Commands      

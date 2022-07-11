@@ -17,6 +17,9 @@ Functions (to be used in Containerfile and container-compose.py):
 
 Run(command="",block=False) --- Run command in container. block indicates whether the command should be blocking
 
+
+If you are on Linux, you can enable user and net namespaces with CONTAINER_USER_NAMESPACES=1 and CONTAINER_NET_NAMESPACES=1, respectively (do be aware that net namespaces are slower than on the root ns)
+
 Mount(IN,OUT) --- mount directory on IN, in OUT. IN can either be an absolute path, which will mount the directory relative to the host); or an absolute path prefixed with a container name (ie, 'void:/var'), which mount the directory relative to the prefix. OUT is an absolute path relative to the container.
 Base(base) --- Make base the base container for the container
 
@@ -38,6 +41,10 @@ User(user) --- set user as working user. User must exist in host environment. Yo
 Commands:
 
 Shell(shell) --- set container shell to be shell
+
+Volume(name,path) --- Bind volume $name in the container's Volumes path to $path in container
+
+Port(_from,_to) --- bind port in container to port on host
 
 Start --- runs container-compose.py
 
