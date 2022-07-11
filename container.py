@@ -37,12 +37,12 @@ def convert_colon_string_to_directory(string):
     elif len(string)==1:
         string=string[0] # No container was specified, so assume "root"
     else:
-        string=f"{ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
+        string=f"{utils.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
     string=os.path.expanduser(string)
     return string
     
 def load_dependencies(self,layer):
-    with open(f"{ROOT}/{layer}/container-compose.py") as fh:        
+    with open(f"{utils.ROOT}/{layer}/container-compose.py") as fh:        
        root = ast.parse(fh.read())
        for node in ast.iter_child_nodes(root):
            if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
@@ -129,8 +129,8 @@ class Container:
                 print(f"Command: {command}")
         self.Base(self.base)
         #Only mount if this is the first Run called, where the base hasn't been added to unionopts
-        if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
-            self.unionopts+=f":{ROOT}/{self.base}/diff=RO"
+        if not self.unionopts.endswith(f":{utils.ROOT}/{self.base}/diff=RO"):
+            self.unionopts+=f":{utils.ROOT}/{self.base}/diff=RO"
             
             #Prevent merged from being mounted multiple times
             if not os.path.ismount("merged"):
@@ -179,15 +179,23 @@ class Container:
             return list(map(int,processes))
     
     def Mount(self,IN,OUT):
-        try:
-            os.makedirs(f"diff{OUT}",exist_ok=True)
-        except FileExistsError:
-            os.remove(f"diff{OUT}")
-            os.makedirs(f"diff{OUT}",exist_ok=True)
-        if not os.path.ismount(f"diff{OUT}"):
-            IN=convert_colon_string_to_directory(IN)
-            utils.shell_command(["bindfs",IN,f"diff{OUT}"]) #Only use bindfs 1.15.1
-    
+        IN=convert_colon_string_to_directory(IN)
+        if os.path.isdir(IN):
+            try:
+                os.makedirs(f"diff{OUT}",exist_ok=True)
+            except FileExistsError:
+                os.remove(f"diff{OUT}")
+                os.makedirs(f"diff{OUT}",exist_ok=True)
+            if not os.path.ismount(f"diff{OUT}"):
+                utils.shell_command(["bindfs",IN,f"diff{OUT}"]) #Only use bindfs 1.15.1
+        else:
+            try:
+                os.link(IN,f"diff{OUT}")
+            except FileExistsError:
+                os.remove(f"diff{OUT}")
+                os.link(IN,f"diff{OUT}")
+            self.hardlinks.append(f"diff{OUT}")
+            
     def Copy(self,src,dest):
         #Relative directory
         if not dest.startswith("/"):
@@ -222,7 +230,7 @@ class Container:
     def Base(self,base):
         
         #Effectively make subsequent Bases a no-op
-        if not self.unionopts.endswith(f":{ROOT}/{self.base}/diff=RO"):
+        if not self.unionopts.endswith(f":{utils.ROOT}/{self.base}/diff=RO"):
             self.base=base
         load_dependencies(self,base)
     def Wait(self,*args, **kwargs):
@@ -230,13 +238,13 @@ class Container:
 
     def Layer(self,layer,mode="RO"):
         if self.build:
-            if len(os.listdir(f"{ROOT}/{layer}/diff"))<2:
+            if len(os.listdir(f"{utils.ROOT}/{layer}/diff"))<2:
                 #Build layer if it doesn't exist
-                self.__class__(layer,_function="build").Build()
+                self.__class__(layer).Build()
                 #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         load_dependencies(self,layer)
-        self.unionopts+=f":{ROOT}/{layer}/diff={mode}"
+        self.unionopts+=f":{utils.ROOT}/{layer}/diff={mode}"
     
     def Workdir(self,*args, **kwargs):
         self.Class.workdir(*args, **kwargs)
@@ -278,18 +286,9 @@ class Container:
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
-        volume_path=f"{ROOT}/{name[0]}/Volumes/{name[1]}"
+        volume_path=f"{utils.ROOT}/{name[0]}/Volumes/{name[1]}"
         
-        #If a directory, just mount it directly. If file, hardlink it
-        if os.path.isdir(volume_path):
-            self.Mount(volume_path,path)
-        else:
-            try:
-                os.link(volume_path,f"diff/{path}")
-            except FileExistsError:
-                os.remove(f"diff/{path}")
-                os.link(volume_path,f"diff/{path}")
-            self.hardlinks.append(f"diff/{path}")
+        self.Mount(volume_path,path)
         
     def Update(self,keys):
         if self.build:
@@ -318,7 +317,7 @@ class Container:
                     utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
                     
         
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{ROOT}/{self.name}/diff" in _]
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              utils.shell_command(["rm","-rf",dir])
@@ -328,20 +327,24 @@ class Container:
         for hardlink in self.hardlinks:
             os.remove(hardlink) #Remove volume hardlinks when done
         
+        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
+        
         if self.namespaces:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
         
         for port in self.ports:
             for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
                 utils.kill_process_gracefully(pid) #Kill socat(s)
+
         exit()
         
     def Port(self,_from,_to):
-       if self.namespaces:
-           utils.shell_command(["socat", f"tcp-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "tcp-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
-       else:
-           utils.shell_command(["socat", f"tcp-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"tcp:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
-       self.ports.append(_to)
+        for proto in ["tcp","udp"]:
+            if self.namespaces:
+               utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+            else:
+               utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+        self.ports.append(_to)
             
     #Commands      
     def Start(self):
@@ -387,9 +390,12 @@ class Container:
                  
                 for command in commands:
                     utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
-                    
+                
+                if not os.path.isdir("diff/etc"):
+                    os.makedirs("diff/etc",exist_ok=True)
+                utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
             #Run container-compose.py
-            with open(f"{ROOT}/{self.name}/container-compose.py") as f:
+            with open(f"{utils.ROOT}/{self.name}/container-compose.py") as f:
                 code=f.read()
             exec(code,self.globals,locals())
             
@@ -410,7 +416,7 @@ class Container:
         remove_empty_folders_in_diff()
         for layer in self.temp_layers:
             #Clean layer if it was temporary
-            self.__class__(layer,_function="clean").Clean()
+            self.__class__(layer).Clean()
             #utils.shell_command(["container","clean",layer])
         self.Exit(1,2)
         
@@ -422,14 +428,16 @@ class Container:
         return self.Class.restart()
     
     def Chroot(self):
-        stopped=False
+
         if "Stopped" in self.Status():
             stopped=True
-        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
-            data=json.load(f)
-        
-        for key in data:
-            setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
+        else:
+            stopped=False
+            with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
+                data=json.load(f)
+            
+            for key in data:
+                setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
             
         command=self.shell #By default, run the shell
         for flag in self.flags:
@@ -452,8 +460,8 @@ class Container:
 
     def Init(self):
        
-        os.makedirs(f"{ROOT}/{self.name}",exist_ok=True)
-        os.chdir(f"{ROOT}/{self.name}")
+        os.makedirs(f"{utils.ROOT}/{self.name}",exist_ok=True)
+        os.chdir(f"{utils.ROOT}/{self.name}")
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
         
@@ -475,9 +483,9 @@ class Container:
 
     def Edit(self):
         if '--build' in self.flags:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/Containerfile.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/Containerfile.py"],stdout=None)
         else:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{ROOT}/{self.name}/container-compose.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/container-compose.py"],stdout=None)
 
     def Status(self):
         return self.Class.status()
@@ -491,14 +499,14 @@ class Container:
     
     def Delete(self):
         self.Stop()
-        utils.shell_command(["sudo","rm","-rf",f"{ROOT}/{self.name}"])
+        utils.shell_command(["sudo","rm","-rf",f"{utils.ROOT}/{self.name}"])
     
     def Watch(self):
         self.Class.watch()
 
 utils.CLASS=Container
 
-utils.ROOT=ROOT=utils.get_root_directory()  
+utils.ROOT=utils.get_root_directory()  
    
 if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
