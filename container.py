@@ -88,7 +88,7 @@ class Container:
         
         self.unionopts=utils.get_value(_unionopts,"diff=RW")
         
-        self.env=utils.get_value(_env,f"""export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo "~$(whoami)")""")
+        self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
         
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
