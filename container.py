@@ -151,7 +151,7 @@ class Container:
                     elif sys.platform=="cygwin":
                         #Cygwin doesn't have rbind
                         utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
-                    else:
+                    elif sys.platform=="linux":
                         utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
                    
             self.mounted_special=True
@@ -315,9 +315,13 @@ class Container:
         if os.path.isdir("merged"):
             for dir in os.listdir("merged"):
                 if os.path.ismount(f"merged/{dir}"):
-                
-                    utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                    utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    if sys.platform=='linux':
+                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    elif sys.platform=='darwin':
+                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
+                    elif sys.platform=='cygwin':
+                        utils.shell_command(["umount",f"merged/{dir}"])
                     
         
         diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
