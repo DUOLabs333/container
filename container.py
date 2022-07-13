@@ -259,8 +259,6 @@ class Container:
         self.Update("env")
     
     def User(self,user=""):
-        if not self.namespaces.user:
-            return
         if user=="":
             self.uid=os.getuid()
             self.gid=os.getgid()
