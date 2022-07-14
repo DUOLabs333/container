@@ -173,9 +173,9 @@ class Container:
             
     
     def Ps(self,process=None):
-        if process=="main" or ("--main" in self.flags):
+        if process=="main" or ("main" in self.flags):
             return self.Class.get_main_process()
-        elif process=="auxiliary" or ("--auxiliary" in self.flags):
+        elif process=="auxiliary" or ("auxiliary" in self.flags):
             if not os.path.isdir("merged"):
                 return []
             processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
@@ -450,9 +450,8 @@ class Container:
                 setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
             
         command=self.shell #By default, run the shell
-        for flag in self.flags:
-            if flag.startswith("--run="):
-                command=flag.split("=",1)[1]
+        if "run" in self.flags:
+            command=self.flags["run"]
         if stopped:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
@@ -461,7 +460,7 @@ class Container:
         if stopped:
             self.Stop()
         
-        if "--and-stop" in self.flags:
+        if "and-stop" in self.flags:
             return [self.Stop()]
     
     
@@ -475,24 +474,24 @@ class Container:
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
         
-        if '--temp' in self.flags:
-            self.flags.append('--no-edit')
-            self.flags.append('--only-chroot')
+        if 'temp' in self.flags:
+            self.flags['no-edit']=''
+            self.flags['only-chroot']=''
         with open(f"container-compose.py",'a'):
             pass
         
-        if '--build' in self.flags:
+        if 'build' in self.flags:
             with open(f"Containerfile",'a'):
                 pass
         
-        if '--no-edit' not in self.flags:
+        if 'no-edit' not in self.flags:
             self.Edit()
         
-        if utils.check_if_element_any_is_in_list(['--only-chroot','--and-chroot'],self.flags):
-            return [self.Start(),self.Delete() if '--temp' in self.flags else None]
+        if utils.check_if_element_any_is_in_list(['only-chroot','and-chroot'],self.flags):
+            return [self.Start(),self.Delete() if 'temp' in self.flags else None]
 
     def Edit(self):
-        if '--build' in self.flags:
+        if 'build' in self.flags:
             utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/Containerfile.py"],stdout=None)
         else:
             utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/container-compose.py"],stdout=None)
