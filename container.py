@@ -61,8 +61,7 @@ def chroot_command(self,command):
     
     
     if self.namespaces.net:
-        if not self.build:
-            result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
+        result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
     
     if sys.platform!="cygwin" and not self.namespaces.user:
         result=["sudo"]+result
@@ -417,6 +416,7 @@ class Container:
     def Build(self):
         self.Stop()
         self.build=True
+        self.namespaces.net=False #Don't enable it when building, as it just gets messy
         signal.signal(signal.SIGTERM,self.Exit)
         signal.signal(signal.SIGINT,self.Exit)
         with open("Containerfile.py") as f:
