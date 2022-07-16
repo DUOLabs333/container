@@ -5,7 +5,9 @@ import sys, os
 import re, json
 import platform
 import subprocess, shutil
-
+# < include '../utils/utils.py' >
+import utils
+import collections, contextlib
 def Import(uri,path):    
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
@@ -123,51 +125,98 @@ def Import(uri,path):
     shutil.rmtree(temp_folder)
 
 #Convert Dockerfile to Containerfile
-def Convert():
-    IN=NAME[0]
-    OUT=NAME[1]
+def Convert(IN,OUT):
     
-    #Convert a line of a Dockerfile into a Container file
-    def docker_to_container(line):
-        COMMAND=line.split(' ')[0]
-        line=line.split(' ')[1:]
-        #Remove flags from line
+    @contextlib.contextmanager
+    def smart_open(filename=None):
+        if filename and filename != '-':
+            fh = open(filename, 'w')
+        else:
+            fh = sys.stdout
+    
+        try:
+            yield fh
+        finally:
+            if fh is not sys.stdout:
+                fh.close()
+                
+    stage="" #Stage name
+    stages=[]
+    def docker_to_container(line): #Convert a line of a Dockerfile into a Container file
+        nonlocal stage
+        nonlocal stages
+        line=utils.split_string_by_char(line," ") #Split string for better parsing
+        
+        COMMAND=line[0].title() #Get first command
+        line=line[1:]
+        
+        FLAGS={}
         for i in range(len(line)):
-            if not line[i].startswith("--"):
+            if not line[i].startswith("--"): #If true, then it's the start of the actual command and can be kept
                 line=line[i:]
                 break
+            
+            flag=line[i].split('=',1) #Split line by '='
+            if len(flag)==1:
+                flag.append('') #Pad out the flag array
+            flag[0]=flag[0][2:] #Remove the '--'
+            FLAGS[flag[0]]=flag[1]
         
         line=list(filter(None,line))
-        result=[]
-        if COMMAND=='FROM':
-            result=["Base",f"{split_by_char(line[0])[0]}"]
-        elif COMMAND=='RUN':
-            result=["Run",f"{' '.join(line)}"]
-        elif COMMAND=='WORKDIR':
-            result=["Workdir",f"{line[0]}"]
-        elif COMMAND=='COPY':
-            result=["Copy",f"{line[0]}",f"{line[1]}"]
-        elif COMMAND=='ENV':
-            result=["Env",f"{' '.join(line)}"]
-        else:
-            result=['','']
         
-        #Escape all strings because of Python syntax
-        if ''.join(result):
-            result=['"'+result[_].replace("'", r'\'').replace('"', r'\"')+'"' if _!=0 else result[_] for _ in range(len(result))]
+        OPTIONS={} # Any arguments that gets passed on to the function
         
-        return result[0]+f"({', '.join(result[1:])})"
+        if COMMAND=='From':
+            COMMAND="Base"
+            if "AS" in line: # Multi-stage build
+                stage=line[line.index("AS")+1]
+                base=line[line.index("AS")-1]
+                stages.append(stage)
+            else:
+                stage=""
+                base=line[-1]
+                
+            if ':' in base:
+                base="'"+base+"'" #Escape base
+            
+            if stage!="":
+                yield f"{stage}=Container('{stage}', ['temp'])"
+                yield f"{stage}.Init()"
+                yield f"""{stage}.Base("{base}")"""
+                yield f"{stage}.Start()"
+            return #Nothing else to do
+        elif COMMAND=="Arg":
+            return "()"
+        elif COMMAND=="Run":
+            line=[' '.join(line)]
+        elif COMMAND=="Expose":
+            COMMAND="Port"
+            line.append(line[0])  
+        #If there is a stage, append commands with the name
+        if stage!="":
+            COMMAND=stage+"."+COMMAND
+                    
+        #Escape all strings
+        line=['"'+line[_].replace("'", r'\'').replace('"', r'\"')+'"' for _ in range(len(line))]
         
-    #Move all bash line breaks to one line
+        result=', '.join(line)
+        yield COMMAND+f"({result})"
+        
+    #Move all shell line breaks to one line
     with open(IN,'r') as f:
         Dockerfile=f.read().replace("\\\n"," ")
     
-    with open(OUT,'w') as f:    
+    with smart_open(OUT) as f:
         for line in Dockerfile.splitlines():
             line=line.strip()
+            line=' '.join(line.split()) #Remove extra spacing
             if not line.startswith('#') and line:
-                result=docker_to_container(line)
-                if result!="()":
-                    f.write(result+"\n")
+                for result in docker_to_container(line):
+                    if result!="()":
+                        f.write(result+"\n") 
+        for stage in stages:
+            f.write(f"{stage}.Stop()\n")
+    
+    
 
-Import(sys.argv[1],"")
+Convert(sys.argv[1],"-")

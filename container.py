@@ -217,8 +217,7 @@ class Container:
             src=src[:-1]
         if dest.endswith("/"):
             dest=dest[:-1]
-        
-        #print(f"cp -a {src} {dest}")                   
+                        
         cp_error=utils.shell_command(["cp","-a",f"{src}",f"{dest}"])
         if "cp: cannot create" in cp_error:
             #dest does not exist, so create its parent's folder
@@ -345,6 +344,8 @@ class Container:
         exit()
         
     def Port(self,_from,_to):
+        _from=int(_from)
+        _to=int(_to)
         if not self.namespaces.net:
             if _from==_to:
                 return #If the ports are the same, don't socat it, since it will take up the port.
