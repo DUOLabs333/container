@@ -8,6 +8,7 @@ import subprocess, shutil
 # < include '../utils/utils.py' >
 import utils
 import collections, contextlib
+import shlex
 def Import(uri,path):    
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
@@ -197,6 +198,11 @@ def Convert(IN,OUT):
                 if FLAGS["from"] in stages:
                     line[0]="{{{}.name}}:".format(FLAGS["from"])+line[0].replace("{","{{").replace("}","}}")
                     f_strings.append(0)
+        elif COMMAND=="Cmd":
+            if line[0]=="[": #Exec form
+                line=line[1:-1]
+                line=[_[1:-1] for _ in line] #Remove quotes
+                line=[shlex.join(line)]
         #If there is a stage, append commands with the name
         if stage!="":
             COMMAND=stage+"."+COMMAND

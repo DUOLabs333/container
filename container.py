@@ -19,6 +19,9 @@ import getpass
 
 import utils
 
+# < include 'modules/container_docker.py' >
+import container_docker
+
 utils.GLOBALS=globals()
 
 SHELL_CWD=os.environ.get("PWD")
