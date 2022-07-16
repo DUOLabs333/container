@@ -145,6 +145,7 @@ def Convert(IN,OUT):
     def docker_to_container(line): #Convert a line of a Dockerfile into a Container file
         nonlocal stage
         nonlocal stages
+        f_strings=[] #Which elements of line should be an f-string
         line=utils.split_string_by_char(line," ") #Split string for better parsing
         
         COMMAND=line[0].title() #Get first command
@@ -163,9 +164,7 @@ def Convert(IN,OUT):
             FLAGS[flag[0]]=flag[1]
         
         line=list(filter(None,line))
-        
-        OPTIONS={} # Any arguments that gets passed on to the function
-        
+    
         if COMMAND=='From':
             COMMAND="Base"
             if "AS" in line: # Multi-stage build
@@ -175,7 +174,6 @@ def Convert(IN,OUT):
             else:
                 stage=""
                 base=line[-1]
-                
             if ':' in base:
                 base="'"+base+"'" #Escape base
             
@@ -184,21 +182,29 @@ def Convert(IN,OUT):
                 yield f"{stage}.Init()"
                 yield f"""{stage}.Base("{base}")"""
                 yield f"{stage}.Start()"
-            return #Nothing else to do
-        elif COMMAND=="Arg":
+                return #Nothing else to do
+            else:
+                line[-1]=base
+        elif COMMAND=="Arg": #Not supported
             return "()"
         elif COMMAND=="Run":
             line=[' '.join(line)]
         elif COMMAND=="Expose":
             COMMAND="Port"
-            line.append(line[0])  
+            line.append(line[0]) #Port needs two arguments
+        elif COMMAND=="Copy":
+            if "from" in FLAGS:
+                if FLAGS["from"] in stages:
+                    line[0]="{{{}.name}}:".format(FLAGS["from"])+line[0].replace("{","{{").replace("}","}}")
+                    f_strings.append(0)
         #If there is a stage, append commands with the name
         if stage!="":
             COMMAND=stage+"."+COMMAND
                     
         #Escape all strings
-        line=['"'+line[_].replace("'", r'\'').replace('"', r'\"')+'"' for _ in range(len(line))]
-        
+        line=['"""'+line[_].replace("'", r'\'').replace('"', r'\"')+'"""' for _ in range(len(line))]
+        for _ in f_strings:
+            line[_]='f'+line[_]
         result=', '.join(line)
         yield COMMAND+f"({result})"
         
@@ -215,7 +221,7 @@ def Convert(IN,OUT):
                     if result!="()":
                         f.write(result+"\n") 
         for stage in stages:
-            f.write(f"{stage}.Stop()\n")
+            f.write(f"{stage}.Delete()\n")
     
     
 

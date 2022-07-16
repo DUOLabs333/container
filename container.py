@@ -80,6 +80,8 @@ def str2bool(v):
   
 class Container:
     def __init__(self,_name,_flags=None,_unionopts="diff=RW",_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
+        if 'temp' in _flags:
+            _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
         self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_workdir)
         
