@@ -7,6 +7,13 @@ To start,
 4. Run "container init $CONTAINER" and edit the container-compose.py with the commands to start
 5. Once you have prepared your image, run "container start $CONTAINER"
 
+To build,
+mod-download requests -d _vendor
+mod-convert _vendor
+mod build --make-script container.py
+
+
+====================Docs=======================
 Containerfile:
 This is where you list the steps to build the image. By default, the commands are blocking -- ie, a Run command will not end until the command is finished
 

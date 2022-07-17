@@ -9,6 +9,7 @@ import subprocess, shutil
 import utils
 import collections, contextlib
 import shlex
+    
 def Import(uri,path):    
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
@@ -179,7 +180,7 @@ def Convert(IN,OUT):
                 base="'"+base+"'" #Escape base
             
             if stage!="":
-                yield f"{stage}=Container('{stage}', ['temp'])"
+                yield f"{stage}=Container('{stage}', {{'temp':''}}])"
                 yield f"{stage}.Init()"
                 yield f"""{stage}.Base("{base}")"""
                 yield f"{stage}.Start()"
@@ -203,22 +204,24 @@ def Convert(IN,OUT):
                 line=line[1:-1]
                 line=[_[1:-1] for _ in line] #Remove quotes
                 line=[shlex.join(line)]
-        #If there is a stage, append commands with the name
-        if stage!="":
-            COMMAND=stage+"."+COMMAND
                     
         #Escape all strings
         line=['"""'+line[_].replace("'", r'\'').replace('"', r'\"')+'"""' for _ in range(len(line))]
         for _ in f_strings:
             line[_]='f'+line[_]
         result=', '.join(line)
+        
+        #If there is a stage, append commands with the name
+        if stage!="":
+            COMMAND=stage+"."+COMMAND
+            
         yield COMMAND+f"({result})"
         
     #Move all shell line breaks to one line
     with open(IN,'r') as f:
         Dockerfile=f.read().replace("\\\n"," ")
     
-    with smart_open(OUT) as f:
+    with smart_open(os.path.join(OUT,"Containerfile.py")) as f:
         for line in Dockerfile.splitlines():
             line=line.strip()
             line=' '.join(line.split()) #Remove extra spacing

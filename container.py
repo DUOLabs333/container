@@ -16,23 +16,16 @@ import types
 import getpass
 
 # < include '../utils/utils.py' >
-
 import utils
 
-# < include 'modules/container_docker.py' >
-import container_docker
+# < include '_vendor.py' >
+import _vendor
 
 utils.GLOBALS=globals()
 
 SHELL_CWD=os.environ.get("PWD")
 
 #Helper functions  
-def flatten(*args, **kwargs):
-    return utils.flatten_list(*args, **kwargs)
-
-def print_result(*args, **kwargs):
-    return utils.print_list(*args, **kwargs)
-
 def convert_colon_string_to_directory(string):
     string=utils.split_string_by_char(string,char=":")
     if string[0]=="root":
@@ -44,33 +37,7 @@ def convert_colon_string_to_directory(string):
     string=os.path.expanduser(string)
     return string
     
-def load_dependencies(self,layer):
-    with open(f"{utils.ROOT}/{layer}/container-compose.py") as fh:        
-       root = ast.parse(fh.read())
-       for node in ast.iter_child_nodes(root):
-           if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
-               function=node.value.func.id
-               if function in ["Layer","Base","Env","Shell"]:
-                   arguments=[eval(ast.unparse(val)) for val in node.value.args]
-                   getattr(self,function)(*arguments) #Run function
 
-def chroot_command(self,command):
-    if self.namespaces.user:
-        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it  
-    else:
-        result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"] # Unshare does not exist, so use chroot
-        
-    result+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
-    
-    
-    if self.namespaces.net:
-        result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
-    
-    if sys.platform!="cygwin" and not self.namespaces.user:
-        result=["sudo"]+result
-        
-    return result
-    
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
@@ -173,7 +140,7 @@ class Container:
                 stdout=log_file
                 stderr=subprocess.STDOUT
             
-            return utils.shell_command(chroot_command(self,command),stdout=stdout,stderr=stderr)
+            return utils.shell_command(_vendor.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process=None):
@@ -238,7 +205,8 @@ class Container:
         #Effectively make subsequent Bases a no-op
         if not self.unionopts.endswith(f":{utils.ROOT}/{self.base}/diff=RO"):
             self.base=base
-        load_dependencies(self,base)
+        _vendor.misc.load_dependencies(self,base)
+        
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
 
@@ -249,7 +217,7 @@ class Container:
                 self.__class__(layer).Build()
                 #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-        load_dependencies(self,layer)
+        _vendor.misc.load_dependencies(self,layer)
         self.unionopts+=f":{utils.ROOT}/{layer}/diff={mode}"
     
     def Workdir(self,*args, **kwargs):
@@ -462,7 +430,7 @@ class Container:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
-        utils.shell_command(chroot_command(self,command),stdout=None)
+        utils.shell_command(_vendor.misc.chroot_command(self,command),stdout=None)
         if stopped:
             self.Stop()
         
@@ -493,6 +461,12 @@ class Container:
         if 'no-edit' not in self.flags:
             self.Edit()
         
+        if 'from' in self.flags:
+            _vendor.container_docker.Import(self.flags['from'],"diff") #Import from container
+        
+        if 'dockerfile' in flags:
+            _vendor.container_docker.Convert(self.flags['dockerfile'],".")
+            
         if utils.check_if_element_any_is_in_list(['only-chroot','and-chroot'],self.flags):
             return [self.Start(),self.Delete() if 'temp' in self.flags else None]
 
@@ -535,7 +509,7 @@ if __name__ == "__main__":
                 continue
         result=utils.execute_class_method(item,FUNCTION)
         
-        print_result(result)
+        utils.print_list(result)
         
 
     
