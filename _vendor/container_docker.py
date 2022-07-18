@@ -9,7 +9,8 @@ import subprocess, shutil
 import utils
 import collections, contextlib
 import shlex
-    
+
+#Import from remote docker registry
 def Import(uri,path):    
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
@@ -116,15 +117,18 @@ def Import(uri,path):
     opener = urllib.request.build_opener()
     opener.addheaders = [('Authorization', f"Bearer {token}")]
     urllib.request.install_opener(opener)
+    
     #Download layers
     for i in range(len(layers)):
         urllib.request.urlretrieve(f"https://{registry}/v2/{image}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
         
         #Extract layer to container and remove it
-        subprocess.run(["tar","-xf",f"{temp_folder}/layer_{i}.tar.gz","-C",path])
+        subprocess.run(["tar","-xf",f"{temp_folder}/layer_{i}.tar.gz","-C",os.path(path,registry,layers[i],"diff")])
         os.remove(f"{temp_folder}/layer_{i}.tar.gz")
     
     shutil.rmtree(temp_folder)
+    
+    return [os.path(registry,_) for _ in layers]
 
 #Convert Dockerfile to Containerfile
 def Convert(IN,OUT):
@@ -176,11 +180,11 @@ def Convert(IN,OUT):
             else:
                 stage=""
                 base=line[-1]
-            if ':' in base:
-                base="'"+base+"'" #Escape base
+                
+            base=base.replace(":","/") #To fit tags in the traditional Unix directory structure
             
             if stage!="":
-                yield f"{stage}=Container('{stage}', {{'temp':''}}])"
+                yield f"{stage}=Container('', {{'temp':''}}])"
                 yield f"{stage}.Init()"
                 yield f"""{stage}.Base("{base}")"""
                 yield f"{stage}.Start()"

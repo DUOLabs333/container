@@ -52,6 +52,7 @@ class Container:
     def __init__(self,_name,_flags=None,_unionopts="diff=RW",_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
+        _name=_name.replace('/','_') #To allow for Docker-imported containers to work
         self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_workdir)
         
@@ -460,12 +461,6 @@ class Container:
         
         if 'no-edit' not in self.flags:
             self.Edit()
-        
-        if 'from' in self.flags:
-            _vendor.container_docker.Import(self.flags['from'],"diff") #Import from container
-        
-        if 'dockerfile' in flags:
-            _vendor.container_docker.Convert(self.flags['dockerfile'],".")
             
         if utils.check_if_element_any_is_in_list(['only-chroot','and-chroot'],self.flags):
             return [self.Start(),self.Delete() if 'temp' in self.flags else None]
