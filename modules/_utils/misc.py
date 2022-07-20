@@ -1,4 +1,6 @@
 def load_dependencies(self,layer):
+    if not os.path.isfile(f"{utils.ROOT}/{layer}/container-compose.py"):
+        return #Don't error out if container-compose.py doesn't exist
     with open(f"{utils.ROOT}/{layer}/container-compose.py") as fh:        
        root = ast.parse(fh.read())
        for node in ast.iter_child_nodes(root):
