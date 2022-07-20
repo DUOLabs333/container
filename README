@@ -8,17 +8,17 @@ To start,
 5. Once you have prepared your image, run "container start $CONTAINER"
 
 To build,
-mod-download requests -d _vendor
-mod-convert _vendor
+mod-download requests -d modules
+mod-convert modules/{_utils,requests}
 mod build --make-script container.py
 
 
 ====================Docs=======================
 Containerfile:
-This is where you list the steps to build the image. By default, the commands are blocking -- ie, a Run command will not end until the command is finished
+This is where you list the steps to build the image.
 
 container-compose.py:
-This is where you list the steps to run the image. By default, the commands are non-blocking.
+This is where you list the steps to run the image.
 
 Functions (to be used in Containerfile and container-compose.py):
 

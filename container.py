@@ -18,8 +18,8 @@ import getpass
 # < include '../utils/utils.py' >
 import utils
 
-# < include '_vendor.py' >
-import _vendor
+# < include 'modules/_utils.py' >
+import _utils
 
 utils.GLOBALS=globals()
 
@@ -49,16 +49,14 @@ def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
   
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts="diff=RW",_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
+    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
         _name=_name.replace('/','_') #To allow for Docker-imported containers to work
         self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_workdir)
         
-        self.base="void"
-        
-        self.unionopts=utils.get_value(_unionopts,"diff=RW")
+        self.unionopts=utils.get_value(_unionopts,[])
         
         self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
         
@@ -102,14 +100,18 @@ class Container:
         if self.build:
             if command.strip()!="":
                 print(f"Command: {command}")
-        self.Base(self.base)
-        #Only mount if this is the first Run called, where the base hasn't been added to unionopts
-        if not self.unionopts.endswith(f":{utils.ROOT}/{self.base}/diff=RO"):
-            self.unionopts+=f":{utils.ROOT}/{self.base}/diff=RO"
+        
+        if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
+            self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
+                  
+            temp=[]
+            for _ in self.unionopts:
+                temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
+            self.unionopts=":".join(temp)
             
-            #Prevent merged from being mounted multiple times
-            if not os.path.ismount("merged"):
-                utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",f"{self.unionopts}","merged"])
+        #Prevent merged from being mounted multiple times
+        if not os.path.ismount("merged"):
+            utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
                
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
@@ -141,7 +143,7 @@ class Container:
                 stdout=log_file
                 stderr=subprocess.STDOUT
             
-            return utils.shell_command(_vendor.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
+            return utils.shell_command(_utils.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
             
     
     def Ps(self,process=None):
@@ -202,11 +204,8 @@ class Container:
         #Run(f'(while true; do "{command}"; sleep {delay}; done)')
         
     def Base(self,base):
-        
-        #Effectively make subsequent Bases a no-op
-        if not self.unionopts.endswith(f":{utils.ROOT}/{self.base}/diff=RO"):
-            self.base=base
-        _vendor.misc.load_dependencies(self,base)
+        #Make Base a synonym for Layer
+        return self.Layer(base)
         
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
@@ -218,8 +217,8 @@ class Container:
                 self.__class__(layer).Build()
                 #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-        _vendor.misc.load_dependencies(self,layer)
-        self.unionopts+=f":{utils.ROOT}/{layer}/diff={mode}"
+        _utils.misc.load_dependencies(self,layer)
+        self.unionopts.insert(0,[layer,mode])
     
     def Workdir(self,*args, **kwargs):
         self.Class.workdir(*args, **kwargs)
@@ -340,7 +339,6 @@ class Container:
         
         #If child, run code, then exit 
         if pid==0:
-            self.Base(self.base)
             with open(f"{utils.TEMPDIR}/container_{self.name}.log","a+") as f:
                 pass
             #Open a lock file so I can find it with lsof later
@@ -431,7 +429,7 @@ class Container:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
-        utils.shell_command(_vendor.misc.chroot_command(self,command),stdout=None)
+        utils.shell_command(_utils.misc.chroot_command(self,command),stdout=None)
         if stopped:
             self.Stop()
         
