@@ -103,20 +103,28 @@ def Import(uri,path,dockerfile=None):
                 else:
                     digest=manifest['digest']
                     break
-        tag=digest #The tag is the digest
-        manifest=s.get(f"https://{registry}/v2/{image}/manifests/{tag}").json()
-        
-    config=manifest['config']['digest']
-    config=s.get(f"https://{registry}/v2/{image}/blobs/{config}", headers={"Accept":"application/vnd.docker.container.image.v1+json"}).content
-    config_path=pathlib.Path(os.path.join(path,registry,image,tag.removeprefix("sha256:")))
-    config_path.mkdir(parents=True, exist_ok=True)
-    config_path/="docker.json"
-    config_path.write_bytes(config)
+        manifest=s.get(f"https://{registry}/v2/{image}/manifests/{digest}").json()
+    
+    
 
 
     #Get information about layers
     layers=manifest["layers"] if "layers" in manifest else manifest["fsLayers"] #Support v1
     layers=[_["digest"] if "digest" in _ else _["blobSum"] for _ in layers] #Support v1
+    
+    #Write docker.json to place to be used by CompileDockerJson 
+    config=manifest['config']['digest']
+    config=s.get(f"https://{registry}/v2/{image}/blobs/{config}", headers={"Accept":"application/vnd.docker.container.image.v1+json"}).json()
+    
+    #Add layers that will be used by Container.Start
+    config['rootfs']['layers']=[os.path.join(registry,_.removeprefix("sha256:")) for _ in layers]
+    
+    config=json.dumps(config).encode('utf-8')
+    config_path=pathlib.Path(os.path.join(path,registry,image,tag))
+    config_path.mkdir(parents=True, exist_ok=True)
+    config_path/="docker.json"
+    
+    config_path.write_bytes(config)
     
     #Download layers
     for i in range(len(layers)):
@@ -125,8 +133,7 @@ def Import(uri,path,dockerfile=None):
                 shutil.copyfileobj(r.raw, f)
         #urllib.request.urlretrieve(f"https://{registry}/v2/{image}/blobs/{layers[i]}", f"{temp_folder}/layer_{i}.tar.gz")
         
-        layers[i]=layers[i].removeprefix("sha256:")
-        layer_dir=os.path.join(path,registry,layers[i],"diff")
+        layer_dir=os.path.join(path,registry,layers[i].removeprefix("sha256:"),"diff")
         
         os.makedirs(layer_dir,exist_ok=True)
         subprocess.run(["tar","-xf",f"{temp_folder}/layer_{i}.tar.gz","-C",layer_dir])
@@ -134,7 +141,6 @@ def Import(uri,path,dockerfile=None):
     
     shutil.rmtree(temp_folder)
     
-    return [os.path.join(registry,_.removeprefix("sha256:")) for _ in layers]
 
 #Convert Dockerfile to Containerfile
 def Convert(IN,OUT):
@@ -241,7 +247,27 @@ def Convert(IN,OUT):
                         f.write(result+"\n") 
         for stage in stages:
             f.write(f"{stage}.Delete()\n")
-    
-    
 
-#Convert(sys.argv[1],"-")
+#Convert docker.json into list of commands that can be used by Start
+def CompileDockerJson(file):
+    commands=[]
+    with open(file,"rb") as f:
+      config=json.load(f)
+    
+    for _ in config['rootfs']['layers']:
+        commands.append(f"Layer('{_}')")
+    
+    for _ in config['config']['Env']:
+        commands.append(f"""Env(\"\"\"{_}\"\"\")""")
+    
+    commands.append(f"Workdir('{config['config']['WorkingDir']}')")
+    
+    for _ in config['config']['ExposedPorts']:
+        _=_.split("/")[0]
+        commands.append(f"Port({_},{_})")
+    
+    commands.append(f"""Run(\"\"\"{shlex.join(config['config']['Cmd'])}\"\"\")""")
+    return '\n'.join(commands)     #At the end, join them by \n
+
+
+CompileDockerJson("/tmp/index.docker.io/library/nginx/latest/docker.json")
