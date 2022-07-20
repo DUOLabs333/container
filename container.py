@@ -44,7 +44,29 @@ def remove_empty_folders_in_diff():
         if not path.startswith("diff/.unionfs"):
             if len(os.listdir(path)) == 0:
                 os.rmdir(path)
-                
+def get_all_items(root):
+    #Implement Depth-First Search through utils.ROOT
+    items=[]
+    stack=[root]
+    visited={}
+    while len(stack)>0:
+        v=stack.pop()
+        if v not in visited:
+            #Visit
+            visited[v]=True
+            if os.path.isfile(os.path.join(v,"container-compose.py")):
+                items.append(os.path.relpath(v,root)) #Don't need full path
+                continue #No need to search deeper
+            if len(os.listdir(v))==1 and os.listdir(v)[0]==os.path.join(v,"diff"):
+                continue #If there's nothing but diff, no need to search deeper
+            
+            for w in os.listdir(v):
+                w=os.path.join(v,w)
+                if w not in visited:
+                    stack.append(w)
+    return items
+
+utils.get_all_items=get_all_items              
 def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
   
