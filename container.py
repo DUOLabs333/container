@@ -74,7 +74,7 @@ class Container:
     def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
-        _name=_name.replace('/','_') #To allow for Docker-imported containers to work
+
         self.Class = utils.Class(self)
         self.Class.class_init(_name,_flags,_workdir)
         
@@ -152,7 +152,7 @@ class Container:
                    
             self.mounted_special=True
             
-        with open(f"{utils.TEMPDIR}/container_{self.name}.log","a+") as log_file:
+        with open(self.log,"a+") as log_file:
             log_file.write(f"Command: {command}\n")
             log_file.flush()
             
@@ -292,13 +292,13 @@ class Container:
         if isinstance(keys,str):
             keys=[keys]
         
-        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
+        with open(self.lock,"r") as f:
             data=json.load(f)
             
         for key in keys:
             data[key]=getattr(self,key)
         
-        with open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+") as f:
+        with open(self.log,"w+") as f:
             json.dump(data,f)
              
     def Exit(self,a,b):
@@ -361,12 +361,12 @@ class Container:
         
         #If child, run code, then exit 
         if pid==0:
-            with open(f"{utils.TEMPDIR}/container_{self.name}.log","a+") as f:
+            with open(self.log,"a+") as f:
                 pass
             #Open a lock file so I can find it with lsof later
-            self.lock=open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+")
+            open(self.lock,"w+")
             
-            with open(f"{utils.TEMPDIR}/container_{self.name}.lock","w+") as f:
+            with open(self.lock,"w+") as f:
                 json.dump({},f)
             
             self.Update(["env","workdir", "uid","gid","shell"])
@@ -438,7 +438,7 @@ class Container:
             stopped=True
         else:
             stopped=False
-            with open(f"{utils.TEMPDIR}/container_{self.name}.lock","r") as f:
+            with open(self.lock,"r") as f:
                 data=json.load(f)
             
             for key in data:
