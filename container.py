@@ -399,9 +399,7 @@ class Container:
                     os.makedirs("diff/etc",exist_ok=True)
                 utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
             #Run container-compose.py
-            with open(f"{utils.ROOT}/{self.name}/container-compose.py") as f:
-                code=f.read()
-            exec(code,self.globals,locals())
+            utils.execute(self,open(f"{utils.ROOT}/{self.name}/container-compose.py"))
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
@@ -414,9 +412,9 @@ class Container:
         self.namespaces.net=False #Don't enable it when building, as it just gets messy
         signal.signal(signal.SIGTERM,self.Exit)
         signal.signal(signal.SIGINT,self.Exit)
-        with open("Containerfile.py") as f:
-         code = compile(f.read(), 'Containerfile.py', 'exec')
-         exec(code,self.globals,locals())
+        
+        utils.execute(self,open("Containerfile.py"))
+
         self.Stop()
         remove_empty_folders_in_diff()
         for layer in self.temp_layers:
