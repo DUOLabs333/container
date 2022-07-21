@@ -269,5 +269,3 @@ def CompileDockerJson(file):
     commands.append(f"""Run(\"\"\"{shlex.join(config['config']['Cmd'])}\"\"\")""")
     return '\n'.join(commands)     #At the end, join them by \n
 
-
-CompileDockerJson("/tmp/index.docker.io/library/nginx/latest/docker.json")

@@ -1,8 +1,12 @@
 import os
 module_dict={}
 module_dict["_utils"+os.sep+"misc.py"]="""
-def load_dependencies(self,layer):
-    with open(f\"{utils.ROOT}/{layer}/container-compose.py\") as fh:        
+import os, ast, getpass, sys
+
+def load_dependencies(self,root,layer):
+    if not os.path.isfile(f\"{root}/{layer}/container-compose.py\"):
+        return #Don't error out if container-compose.py doesn't exist
+    with open(f\"{root}/{layer}/container-compose.py\") as fh:        
        root = ast.parse(fh.read())
        for node in ast.iter_child_nodes(root):
            if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
@@ -300,19 +304,13 @@ def CompileDockerJson(file):
         commands.append(f\"Port({_},{_})\")
     
     commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config['config']['Cmd'])}\\\"\\\"\\\")\"\"\")
-    print('\\n'.join(commands))
-    return '\\n'.join(commands)
-    
-    #At the end, joint them by \\n
+    return '\\n'.join(commands)     #At the end, join them by \\n
 
-#Convert(sys.argv[1],\"-\")
-
-CompileDockerJson(\"/tmp/index.docker.io/library/nginx/latest/docker.json\")
 
 """
 module_dict["_utils"+os.sep+"__init__.py"]="""
-from .container_docker import *
-
+#from .container_docker import *
+from .misc import *
 """
 
 import os

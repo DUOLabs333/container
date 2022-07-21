@@ -71,7 +71,7 @@ def str2bool(v):
   return v.lower() in ("yes", "true", "t", "1")
   
 class Container:
-    def __init__(self,_name,_flags=None,_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
+    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
 
@@ -239,8 +239,9 @@ class Container:
                 self.__class__(layer).Build()
                 #utils.shell_command(["container","build",layer])
                 self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-        _utils.misc.load_dependencies(self,layer)
-        self.unionopts.insert(0,[layer,mode])
+        _utils.misc.load_dependencies(self,utils.ROOT,layer)
+        if [layer,mode] not in self.unionopts:
+            self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
     
     def Workdir(self,*args, **kwargs):
         self.Class.workdir(*args, **kwargs)
@@ -364,7 +365,7 @@ class Container:
             with open(self.log,"a+") as f:
                 pass
             #Open a lock file so I can find it with lsof later
-            open(self.lock,"w+")
+            lock_file=open(self.lock,"w+")
             
             with open(self.lock,"w+") as f:
                 json.dump({},f)
