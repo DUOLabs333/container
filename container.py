@@ -398,8 +398,12 @@ class Container:
                 if not os.path.isdir("diff/etc"):
                     os.makedirs("diff/etc",exist_ok=True)
                 utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+                
             #Run container-compose.py
-            utils.execute(self,open(f"{utils.ROOT}/{self.name}/container-compose.py"))
+            utils.execute(self,open("container-compose.py"))
+            
+            if os.path.isfile("docker.json"):
+                utils.execute(self,CompileDockerJson("docker.json"))
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
