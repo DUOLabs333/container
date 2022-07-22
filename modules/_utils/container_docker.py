@@ -121,7 +121,9 @@ def Import(uri,path,dockerfile=None):
     
     #Add layers that will be used by Container.Start
     config['rootfs']['layers']=[os.path.join(registry,_.removeprefix("sha256:")) for _ in layers]
-    
+    if "ExposedPorts" not in config['config']:
+        config['config']['ExposedPorts']={}
+        
     config=json.dumps(config).encode('utf-8')
     config_path=pathlib.Path(os.path.join(path,registry,image,tag))
     config_path.mkdir(parents=True, exist_ok=True)
@@ -261,12 +263,13 @@ def Convert(IN,OUT):
 
 #Convert docker.json into list of commands that can be used by Start
 def CompileDockerJson(file):
+    layers=[]
     commands=[]
     with open(file,"rb") as f:
       config=json.load(f)
     
     for _ in config['rootfs']['layers']:
-        commands.append(f"Layer('{_}')")
+        layers.append(f"Layer('{_}')")
     
     for _ in config['config']['Env']:
         commands.append(f"""Env(\"\"\"{_}\"\"\")""")
@@ -278,4 +281,4 @@ def CompileDockerJson(file):
         commands.append(f"Port({_},{_})")
     
     commands.append(f"""Run(\"\"\"{shlex.join(config['config']['Cmd'])}\"\"\")""")
-    return '\n'.join(commands)     #At the end, join them by \n
+    return layers, commands

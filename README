@@ -34,17 +34,18 @@ Copy(IN,OUT) --- copy file/directory from host to container
 
 Loop(func,delay) --- Run func every delay seconds. If func is a string, it will be treated as a shell command. Otherwise, it will be run as a Python function.
 
-Base(base) --- Set base to be the base layer
+Base(base) --- Set base to be the base layer. This is not neccessary (you can use Layer), but can be useful if some Layers have different Bases --- only the first Base specified will be used.
 
 Wait(delay=None) --- if delay=None, then wait forever, otherwise, wait for the indicated number of seconds
 
-Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted
+Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted. All Layers must be specified at the top of the file.
 
 Workdir(work_dir) --- set work_dir as working directory of container
 
 Env(value) --- set environment variable in container
 
-User(user) --- set user as working user. User must exist in host environment. You can also pass in numbers for the user and group.
+User(user) --- set $user as working user. Can either be just user or user:group. You can also pass in numbers for the user and group.
+
 Commands:
 
 Shell(shell) --- set container shell to be shell

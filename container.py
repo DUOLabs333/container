@@ -57,7 +57,7 @@ def get_all_items(root):
             if os.path.isfile(os.path.join(v,"container-compose.py")):
                 items.append(os.path.relpath(v,root)) #Don't need full path
                 continue #No need to search deeper
-            if len(os.listdir(v))==1 and os.listdir(v)[0]==os.path.join(v,"diff"):
+            if len(os.listdir(v))==1 and os.listdir(v)[0]=="diff":
                 continue #If there's nothing but diff, no need to search deeper
             
             for w in os.listdir(v):
@@ -76,8 +76,14 @@ class Container:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
 
         self.Class = utils.Class(self)
+        
+        self.original_name=_name #For use in Init
+        if ":" in _name or 'pull' in _flags: #Is a container
+            _name='/'.join(_utils.container_docker.parse_uri(_name))
+            
         self.Class.class_init(_name,_flags,_workdir)
         
+        self.normalized_name=self.name.replace("/","_")
         self.unionopts=utils.get_value(_unionopts,[])
         
         self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
@@ -103,9 +109,10 @@ class Container:
         
         self.base=False
         self.ports=[]
+
         if self.namespaces.net:
-            self.netns=f"{self.name}-netns"
-            self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.name}-veth0"),host=types.SimpleNamespace(name=f"{self.name}-veth1"))
+            self.netns=f"{self.normalizedname}-netns"
+            self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
             
             while True:
                 cidr=[random.randint(0,255),random.randint(0,255)]
@@ -118,56 +125,7 @@ class Container:
             
         
         
-    #Functions
-    def Run(self,command="",pipe=False):
-        if self.build:
-            if command.strip()!="":
-                print(f"Command: {command}")
-        
-        if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
-            self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
-                  
-            temp=[]
-            for _ in self.unionopts:
-                temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
-            self.unionopts=":".join(temp)
-            
-        #Prevent merged from being mounted multiple times
-        if not os.path.ismount("merged"):
-            utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
-               
-        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
-        if not self.mounted_special:
-            for dir in ["dev","proc"]:
-                if not os.path.ismount(f"merged/{dir}"):
-                    #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
-                    if sys.platform=="darwin":
-                        #MacOS doesn't have bind-mounts
-                        fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
-                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
-                    elif sys.platform=="cygwin":
-                        #Cygwin doesn't have rbind
-                        utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
-                    elif sys.platform=="linux":
-                        utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
-                   
-            self.mounted_special=True
-            
-        with open(self.log,"a+") as log_file:
-            log_file.write(f"Command: {command}\n")
-            log_file.flush()
-            
-            #Pipe output to variable
-            if pipe:
-                stdout=subprocess.PIPE
-                stderr=subprocess.DEVNULL
-            #Print output to file
-            else:
-                stdout=log_file
-                stderr=subprocess.STDOUT
-            
-            return utils.shell_command(_utils.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
-            
+    #Functions        
     
     def Ps(self,process=None):
         if process=="main" or ("main" in self.flags):
@@ -355,6 +313,55 @@ class Container:
             else:
                utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)
+        
+    def Run(self,command="",pipe=False):
+        if self.build:
+            if command.strip()!="":
+                print(f"Command: {command}")
+        
+        if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
+            self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
+                  
+            temp=[]
+            for _ in self.unionopts:
+                temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
+            self.unionopts=":".join(temp)
+            
+        #Prevent merged from being mounted multiple times
+        if not os.path.ismount("merged"):
+            utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+               
+        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
+        if not self.mounted_special:
+            for dir in ["dev","proc"]:
+                if not os.path.ismount(f"merged/{dir}"):
+                    #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
+                    if sys.platform=="darwin":
+                        #MacOS doesn't have bind-mounts
+                        fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
+                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
+                    elif sys.platform=="cygwin":
+                        #Cygwin doesn't have rbind
+                        utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
+                    elif sys.platform=="linux":
+                        utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
+                   
+            self.mounted_special=True
+            
+        with open(self.log,"a+") as log_file:
+            log_file.write(f"Command: {command}\n")
+            log_file.flush()
+            
+            #Pipe output to variable
+            if pipe:
+                stdout=subprocess.PIPE
+                stderr=subprocess.DEVNULL
+            #Print output to file
+            else:
+                stdout=log_file
+                stderr=subprocess.STDOUT
+            
+            return utils.shell_command(_utils.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
             
     #Commands      
     def Start(self):
@@ -403,12 +410,20 @@ class Container:
                 if not os.path.isdir("diff/etc"):
                     os.makedirs("diff/etc",exist_ok=True)
                 utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
-                
-            #Run container-compose.py
-            utils.execute(self,open("container-compose.py"))
+            
+            docker_layers=[]
+            docker_commands=[]
             
             if os.path.isfile("docker.json"):
-                utils.execute(self,CompileDockerJson("docker.json"))
+                docker_layers, docker_commands=_utils.container_docker.CompileDockerJson("docker.json")
+            
+            #Set up layers first from docker_kayer
+            utils.execute(self,'\n'.join(docker_layers))
+            
+            #Run container-compose.py as an intermediary step
+            utils.execute(self,open("container-compose.py"))
+            
+            utils.execute(self,'\n'.join(docker_commands))
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
@@ -470,7 +485,13 @@ class Container:
         return self.Class.list()
 
     def Init(self):
-       
+        
+        if "pull" in self.flags:
+            
+            _utils.container_docker.Import(self.original_name,utils.ROOT)
+            
+            if "dockerfile" in self.flags:
+                _utils.container_docker.Convert(self.flags["dockerfile"],os.path.join(utils.ROOT,self.name))
         os.makedirs(f"{utils.ROOT}/{self.name}",exist_ok=True)
         os.chdir(f"{utils.ROOT}/{self.name}")
         os.makedirs("diff",exist_ok=True)
@@ -523,12 +544,7 @@ if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     
     for name in utils.list_items_in_root(NAMES, FLAGS):
-        if FUNCTION!="init": #If you're running Init, skip this check, as you know it doesn't exist yet.
-            try:
-                item=utils.CLASS(name,FLAGS)
-            except utils.DoesNotExist:
-                print(f"Container {name} does not exist")
-                continue
+        item=utils.CLASS(name,FLAGS)
         result=utils.execute_class_method(item,FUNCTION)
         
         utils.print_list(result)

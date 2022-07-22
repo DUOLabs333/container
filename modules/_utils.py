@@ -36,7 +36,7 @@ def chroot_command(self,command):
 """
 module_dict["_utils"+os.sep+"container_docker.py"]="""
 #!/usr/bin/env python
-import urllib, urllib.parse
+import urllib.parse
 import tempfile
 import sys, os
 import re, json
@@ -45,7 +45,6 @@ import subprocess, shutil
 # < include '../../utils/utils.py' >
 import utils
 
-import collections, contextlib
 import shlex
 import pathlib
 # < include 'requests.py' >
@@ -159,7 +158,9 @@ def Import(uri,path,dockerfile=None):
     
     #Add layers that will be used by Container.Start
     config['rootfs']['layers']=[os.path.join(registry,_.removeprefix(\"sha256:\")) for _ in layers]
-    
+    if \"ExposedPorts\" not in config['config']:
+        config['config']['ExposedPorts']={}
+        
     config=json.dumps(config).encode('utf-8')
     config_path=pathlib.Path(os.path.join(path,registry,image,tag))
     config_path.mkdir(parents=True, exist_ok=True)
@@ -188,18 +189,6 @@ def Import(uri,path,dockerfile=None):
 #Convert Dockerfile to Containerfile
 def Convert(IN,OUT):
     
-    @contextlib.contextmanager
-    def smart_open(filename=None):
-        if filename and filename != '-':
-            fh = open(filename, 'w')
-        else:
-            fh = sys.stdout
-    
-        try:
-            yield fh
-        finally:
-            if fh is not sys.stdout:
-                fh.close()
                 
     stage=\"\" #Stage name
     stages=[]
@@ -280,11 +269,16 @@ def Convert(IN,OUT):
             
         yield COMMAND+f\"({result})\"
         
-    #Move all shell line breaks to one line
-    with open(IN,'r') as f:
-        Dockerfile=f.read().replace(\"\\\\\\n\",\" \")
+    if any(IN.startswith(proto+\"://\") for proto in [\"http\",\"https\"]):
+        requests.get(IN).content #Read from disk
+    else:
+        with open(IN,'r') as f:
+            Dockerfile=f.read() #Read from file
     
-    with smart_open(os.path.join(OUT,\"Containerfile.py\")) as f:
+    #Move all shell line breaks to one line
+    Dockerfile=Dockerfile.replace(\"\\\\\\n\",\" \")
+    
+    with open(os.path.join(OUT,\"Containerfile.py\"),\"w+\") as f:
         Dockerfile=Dockerfile.splitlines()
         
         #Delete last CMD, as this will be the process that runs when container starts
@@ -306,12 +300,13 @@ def Convert(IN,OUT):
 
 #Convert docker.json into list of commands that can be used by Start
 def CompileDockerJson(file):
+    layers=[]
     commands=[]
     with open(file,\"rb\") as f:
       config=json.load(f)
     
     for _ in config['rootfs']['layers']:
-        commands.append(f\"Layer('{_}')\")
+        layers.append(f\"Layer('{_}')\")
     
     for _ in config['config']['Env']:
         commands.append(f\"\"\"Env(\\\"\\\"\\\"{_}\\\"\\\"\\\")\"\"\")
@@ -323,7 +318,8 @@ def CompileDockerJson(file):
         commands.append(f\"Port({_},{_})\")
     
     commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config['config']['Cmd'])}\\\"\\\"\\\")\"\"\")
-    return '\\n'.join(commands)     #At the end, join them by \\n
+    return layers, commands
+
 """
 module_dict["_utils"+os.sep+"__init__.py"]="""
 from .container_docker import Convert
