@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import urllib, urllib.parse
+import urllib.parse
 import tempfile
 import sys, os
 import re, json
@@ -8,7 +8,6 @@ import subprocess, shutil
 # < include '../../utils/utils.py' >
 import utils
 
-import collections, contextlib
 import shlex
 import pathlib
 # < include 'requests.py' >
@@ -151,18 +150,6 @@ def Import(uri,path,dockerfile=None):
 #Convert Dockerfile to Containerfile
 def Convert(IN,OUT):
     
-    @contextlib.contextmanager
-    def smart_open(filename=None):
-        if filename and filename != '-':
-            fh = open(filename, 'w')
-        else:
-            fh = sys.stdout
-    
-        try:
-            yield fh
-        finally:
-            if fh is not sys.stdout:
-                fh.close()
                 
     stage="" #Stage name
     stages=[]
@@ -243,11 +230,16 @@ def Convert(IN,OUT):
             
         yield COMMAND+f"({result})"
         
-    #Move all shell line breaks to one line
-    with open(IN,'r') as f:
-        Dockerfile=f.read().replace("\\\n"," ")
+    if any(IN.startswith(proto+"://") for proto in ["http","https"]):
+        requests.get(IN).content #Read from disk
+    else:
+        with open(IN,'r') as f:
+            Dockerfile=f.read() #Read from file
     
-    with smart_open(os.path.join(OUT,"Containerfile.py")) as f:
+    #Move all shell line breaks to one line
+    Dockerfile=Dockerfile.replace("\\\n"," ")
+    
+    with open(os.path.join(OUT,"Containerfile.py"),"w+") as f:
         Dockerfile=Dockerfile.splitlines()
         
         #Delete last CMD, as this will be the process that runs when container starts
