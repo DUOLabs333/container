@@ -7,10 +7,7 @@ To start,
 4. Run "container init $CONTAINER" and edit the container-compose.py with the commands to start
 5. Once you have prepared your image, run "container start $CONTAINER"
 
-To build,
-mod-download requests -d modules
-mod-convert modules/{_utils,requests}
-mod build --make-script container.py
+To build use the provided build.sh script
 
 
 ====================Docs=======================
@@ -20,40 +17,46 @@ This is where you list the steps to build the image.
 container-compose.py:
 This is where you list the steps to run the image.
 
+$CONTAINERS_ROOT:
+This is the directory where all containers will be in.
+
+Colon-string:
+$A:$B is equivalent to $CONTAINERS_ROOT/$A/diff/$B. If $A$=="root", this is just /$B. In this case, $B$ can be relative to the directory where the command was called from.
+
 Functions (to be used in Containerfile and container-compose.py):
 
-Run(command="",block=False) --- Run command in container. block indicates whether the command should be blocking
+Ps(process) --- If $process is "main", get the PID of the script. If $process is "auxiliary", get the PIDs of all the processes under the chroot. This is mostly for internal use, and should only be used for debugging.
+
+Mount(IN,OUT) --- mount directory on $IN, in $OUT. $IN is a colon-string. $OUT is an absolute path relative to the container.
+
+Copy(IN,OUT) --- copy file/directory from $IN to $OUT. $IN is a colon-string. $OUT is an absolute path relative to the container.
 
 
-If you are on Linux, you can enable user and net namespaces with CONTAINER_USER_NAMESPACES=1 and CONTAINER_NET_NAMESPACES=1, respectively (do be aware that net namespaces are slower than on the root ns)
+Loop(func,delay) --- Run $func every delay seconds. If $func is a string, it will be treated as a shell command. Otherwise, it will be run as a Python function.
 
-Mount(IN,OUT) --- mount directory on IN, in OUT. IN can either be an absolute path, which will mount the directory relative to the host); or an absolute path prefixed with a container name (ie, 'void:/var'), which mount the directory relative to the prefix. OUT is an absolute path relative to the container.
-Base(base) --- Make base the base container for the container
+Wait(delay=None) --- if $delay==None, then wait forever, otherwise, wait for the indicated number of seconds
 
-Copy(IN,OUT) --- copy file/directory from host to container
+Layer(layer,mode="RO") --- add $layer as an layer to the container. $mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted. All Layers must be specified at the top of the file.
 
-Loop(func,delay) --- Run func every delay seconds. If func is a string, it will be treated as a shell command. Otherwise, it will be run as a Python function.
+Base(base) --- Set $base to be the base layer. This is not strictly neccessary (you can use Layer), but can be useful if some Layers have different Bases --- only the first Base specified will be used.
 
-Base(base) --- Set base to be the base layer. This is not neccessary (you can use Layer), but can be useful if some Layers have different Bases --- only the first Base specified will be used.
+Workdir(work_dir) --- set $work_dir as working directory of container
 
-Wait(delay=None) --- if delay=None, then wait forever, otherwise, wait for the indicated number of seconds
-
-Layer(layer,mode="RO") --- add layer as an layer to the container. mode, which can either be 'RO' (for read-only) and 'RW' (for read-write), indicates how it should be mounted. All Layers must be specified at the top of the file.
-
-Workdir(work_dir) --- set work_dir as working directory of container
-
-Env(value) --- set environment variable in container
+Env(value) --- set $env as an environment variable(s) in container 
 
 User(user) --- set $user as working user. Can either be just user or user:group. You can also pass in numbers for the user and group.
 
+Shell(shell) --- set $shell as shell
+
+Volume(name,path) --- Bind volume $name in the container's Volumes path to $path in container. $name can also refer to other containers with the colon-string syntax.
+
+Port(_from,_to) --- bind port $_from in container to port $_to on host
+
+Run(command="",pipe=False) --- Run $command in container. $pipe indicates whether output should be returned rather than being written to the log file
+
+Note: If you are on Linux, you can enable user and net namespaces with CONTAINER_USER_NAMESPACES=1 and CONTAINER_NET_NAMESPACES=1, respectively (do be aware that net namespaces are slower than on the root ns)
+
 Commands:
-
-Shell(shell) --- set container shell to be shell
-
-Volume(name,path) --- Bind volume $name in the container's Volumes path to $path in container
-
-Port(_from,_to) --- bind port in container to port on host
-
 Start --- runs container-compose.py
 
 Build --- runs Containerfile
@@ -62,11 +65,11 @@ Stop --- kills all processes in container
 
 Restart --- stops, then starts the container
 
-Chroot --- runs a shell in the container
+Chroot --- runs an interactive shell in the container. If --and-stop, after the chroot is stopped, the container will be stopped. --run=$command allows you to run a specific command without the TTY.
 
 List --- list specified containers
 
-Init --- make new container
+Init --- make new container. Docker support is available if --pull is specified
 
 Edit --- edit container-compose.py
 

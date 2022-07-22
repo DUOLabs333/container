@@ -184,13 +184,6 @@ class Container:
         self.Class.loop(*args, **kwargs)
         #Run(f'(while true; do "{command}"; sleep {delay}; done)')
         
-    def Base(self,base):
-        if self.base:
-            return #Prevent multiple bases
-        self.base=True
-        #Make Base a synonym for Layer
-        return self.Layer(base)
-        
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
 
@@ -204,15 +197,22 @@ class Container:
         _utils.misc.load_dependencies(self,utils.ROOT,layer)
         if [layer,mode] not in self.unionopts:
             self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
-    
+            
+    def Base(self,base):
+        if self.base:
+            return #Prevent multiple bases
+        self.base=True
+        #Make Base a synonym for Layer
+        return self.Layer(base)
+        
     def Workdir(self,*args, **kwargs):
         self.Class.workdir(*args, **kwargs)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
-        self.Update("workdir")
+        self._update("workdir")
     
     def Env(self,*args, **kwargs):
         self.env=utils.add_environment_variable_to_string(self.env,*args, **kwargs)
-        self.Update("env")
+        self._update("env")
     
     def User(self,user=""):
         if user=="":
@@ -233,11 +233,11 @@ class Container:
             else:
                 self.gid=int(self.Run(f"id -g {user[1]}",pipe=True))
                 #self.gid=pwd.getpwnam(user[1])[2]
-        self.Update(["uid","gid"])
+        self._update(["uid","gid"])
     
     def Shell(self,shell):
         self.shell=shell
-        self.Update("shell")        
+        self._update("shell")        
     
     def Volume(self,name,path):
         name=utils.split_string_by_char(name,char=":")
@@ -249,57 +249,6 @@ class Container:
         
         self.Mount(volume_path,path)
         
-    def Update(self,keys):
-        if self.build:
-            return #No lock file when building --- no need for it
-        if isinstance(keys,str):
-            keys=[keys]
-        
-        with open(self.lock,"r") as f:
-            data=json.load(f)
-            
-        for key in keys:
-            data[key]=getattr(self,key)
-        
-        with open(self.lock,"w+") as f:
-            json.dump(data,f)
-             
-    def Exit(self,a,b):
-        self.Class.kill_auxiliary_processes()
-        
-        #Unmount dev,proc, etc. if directory exists
-        if os.path.isdir("merged"):
-            for dir in os.listdir("merged"):
-                if os.path.ismount(f"merged/{dir}"):
-                    if sys.platform=='linux':
-                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
-                    elif sys.platform=='darwin':
-                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
-                    elif sys.platform=='cygwin':
-                        utils.shell_command(["umount",f"merged/{dir}"])
-                    
-        
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
-        for dir in diff_directories:
-             utils.shell_command(["umount","-l",dir])
-             utils.shell_command(["rm","-rf",dir])
-        utils.shell_command(["umount","-l","merged"])
-    
-        
-        for hardlink in self.hardlinks:
-            os.remove(hardlink) #Remove volume hardlinks when done
-        
-        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
-        
-        if self.namespaces.net:
-            utils.shell_command(["sudo","ip","netns","del",self.netns])
-        
-        for port in self.ports:
-            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
-                utils.kill_process_gracefully(pid) #Kill socat(s)
-
-        exit()
         
     def Port(self,_from,_to):
         _from=int(_from)
@@ -362,6 +311,58 @@ class Container:
                 stderr=subprocess.STDOUT
             
             return utils.shell_command(_utils.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
+    
+    def _update(self,keys):
+        if self.build:
+            return #No lock file when building --- no need for it
+        if isinstance(keys,str):
+            keys=[keys]
+        
+        with open(self.lock,"r") as f:
+            data=json.load(f)
+            
+        for key in keys:
+            data[key]=getattr(self,key)
+        
+        with open(self.lock,"w+") as f:
+            json.dump(data,f)
+             
+    def _exit(self,a,b):
+        self.Class.kill_auxiliary_processes()
+        
+        #Unmount dev,proc, etc. if directory exists
+        if os.path.isdir("merged"):
+            for dir in os.listdir("merged"):
+                if os.path.ismount(f"merged/{dir}"):
+                    if sys.platform=='linux':
+                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    elif sys.platform=='darwin':
+                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
+                    elif sys.platform=='cygwin':
+                        utils.shell_command(["umount",f"merged/{dir}"])
+                    
+        
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
+        for dir in diff_directories:
+             utils.shell_command(["umount","-l",dir])
+             utils.shell_command(["rm","-rf",dir])
+        utils.shell_command(["umount","-l","merged"])
+    
+        
+        for hardlink in self.hardlinks:
+            os.remove(hardlink) #Remove volume hardlinks when done
+        
+        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
+        
+        if self.namespaces.net:
+            utils.shell_command(["sudo","ip","netns","del",self.netns])
+        
+        for port in self.ports:
+            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
+                utils.kill_process_gracefully(pid) #Kill socat(s)
+
+        exit()
             
     #Commands      
     def Start(self):
@@ -381,9 +382,9 @@ class Container:
             with open(self.lock,"w+") as f:
                 json.dump({},f)
             
-            self.Update(["env","workdir", "uid","gid","shell"])
+            self._update(["env","workdir", "uid","gid","shell"])
             
-            signal.signal(signal.SIGTERM,self.Exit)
+            signal.signal(signal.SIGTERM,self._exit)
             
             if self.namespaces.net: #Start network namespace
                 internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
@@ -434,8 +435,8 @@ class Container:
         self.Stop()
         self.build=True
         self.namespaces.net=False #Don't enable it when building, as it just gets messy
-        signal.signal(signal.SIGTERM,self.Exit)
-        signal.signal(signal.SIGINT,self.Exit)
+        signal.signal(signal.SIGTERM,self._exit)
+        signal.signal(signal.SIGINT,self._exit)
         
         utils.execute(self,open("Containerfile.py"))
 
@@ -445,7 +446,7 @@ class Container:
             #Clean layer if it was temporary
             self.__class__(layer).Clean()
             #utils.shell_command(["container","clean",layer])
-        self.Exit(1,2)
+        self._exit(1,2)
         
        
     def Stop(self):
