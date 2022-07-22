@@ -299,7 +299,7 @@ class Container:
         for key in keys:
             data[key]=getattr(self,key)
         
-        with open(self.log,"w+") as f:
+        with open(self.lock,"w+") as f:
             json.dump(data,f)
              
     def Exit(self,a,b):

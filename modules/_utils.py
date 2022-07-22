@@ -57,13 +57,7 @@ s.verify=False
 import urllib3
 urllib3.disable_warnings()
 
-#Import from remote docker registry
-def Import(uri,path,dockerfile=None):    
-    #Make temp folder
-    temp_folder=tempfile.mkdtemp()
-    
-    os.makedirs(path,exist_ok=True)
-    
+def parse_uri(uri):
     #Convert urls into a proper format:
     if uri.count('/')==0: #Official Docker libraries
         uri='library/' + uri
@@ -87,6 +81,16 @@ def Import(uri,path,dockerfile=None):
         image.append('latest')
     
     image, tag= image
+    
+    return (registry,image,tag)
+#Import from remote docker registry
+def Import(uri,path,dockerfile=None):    
+    #Make temp folder
+    temp_folder=tempfile.mkdtemp()
+    
+    os.makedirs(path,exist_ok=True)
+    
+    registry,image,tag=parse_uri(uri)
     #Get registry service and auth service 
     registry_service=\"registry.docker.io\" #By default, use Docker
     auth_service=\"https://auth.docker.io/token\" #By default, use Docker
@@ -165,12 +169,14 @@ def Import(uri,path,dockerfile=None):
     
     #Download layers
     for i in range(len(layers)):
+        layer_dir=os.path.join(path,registry,layers[i].removeprefix(\"sha256:\"),\"diff\")
+        if os.path.isdir(layer_dir):
+            continue #If layer exists, don't download it again
         with s.get(f\"https://{registry}/v2/{image}/blobs/{layers[i]}\", stream=True) as r:
             with open(f\"{temp_folder}/layer_{i}.tar.gz\", 'wb') as f:
                 shutil.copyfileobj(r.raw, f)
         #urllib.request.urlretrieve(f\"https://{registry}/v2/{image}/blobs/{layers[i]}\", f\"{temp_folder}/layer_{i}.tar.gz\")
         
-        layer_dir=os.path.join(path,registry,layers[i].removeprefix(\"sha256:\"),\"diff\")
         
         os.makedirs(layer_dir,exist_ok=True)
         subprocess.run([\"tar\",\"-xf\",f\"{temp_folder}/layer_{i}.tar.gz\",\"-C\",layer_dir])
@@ -230,10 +236,10 @@ def Convert(IN,OUT):
                 stage=\"\"
                 base=line[-1]
                 
-            base=base.replace(\":\",\"/\") #To fit tags in the traditional Unix directory structure
+            base='/'.join(parse_uri(base)) #To fit tags in the traditional Unix directory structure
             
             if stage!=\"\":
-                yield f\"{stage}=Container('', {{'temp':''}}])\"
+                yield f\"{stage}=Container('', {{'temp':''}})\"
                 yield f\"{stage}.Init()\"
                 yield f\"\"\"{stage}.Base(\"{base}\")\"\"\"
                 yield f\"{stage}.Start()\"
@@ -245,13 +251,17 @@ def Convert(IN,OUT):
         elif COMMAND==\"Run\":
             line=[' '.join(line)]
         elif COMMAND==\"Expose\":
+            return 
             COMMAND=\"Port\"
             line.append(line[0]) #Port needs two arguments
         elif COMMAND==\"Copy\":
             if \"from\" in FLAGS:
                 if FLAGS[\"from\"] in stages:
-                    line[0]=\"{{{}.name}}:\".format(FLAGS[\"from\"])+line[0].replace(\"{\",\"{{\").replace(\"}\",\"}}\")
+                    From=f\"{{{FLAGS['from']}.name}}\"
                     f_strings.append(0)
+                else:
+                    From=f\"{FLAGS['from']}\"
+                line[0]=From+\":\"+line[0].replace(\"{\",\"{{\").replace(\"}\",\"}}\")
         elif COMMAND==\"Cmd\":
             if line[0]==\"[\": #Exec form
                 line=line[1:-1]
@@ -275,13 +285,22 @@ def Convert(IN,OUT):
         Dockerfile=f.read().replace(\"\\\\\\n\",\" \")
     
     with smart_open(os.path.join(OUT,\"Containerfile.py\")) as f:
-        for line in Dockerfile.splitlines():
+        Dockerfile=Dockerfile.splitlines()
+        
+        #Delete last CMD, as this will be the process that runs when container starts
+        for i, e in reversed(list(enumerate(Dockerfile))):
+            if e.startswith(\"CMD\"):
+                del Dockerfile[i]
+                break
+        for line in Dockerfile:
             line=line.strip()
             line=' '.join(line.split()) #Remove extra spacing
             if not line.startswith('#') and line:
                 for result in docker_to_container(line):
                     if result!=\"()\":
-                        f.write(result+\"\\n\") 
+                        f.write(result+\"\\n\")
+        if stage!=\"\":
+            f.write(\"\"\"Copy(f\"{{{}.name}}:/\", \"/\")\\n\"\"\".format(stages[-1])) #The last stage can be named, so if it is, just copy everything from that stage to the actual diff
         for stage in stages:
             f.write(f\"{stage}.Delete()\\n\")
 
@@ -305,12 +324,12 @@ def CompileDockerJson(file):
     
     commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config['config']['Cmd'])}\\\"\\\"\\\")\"\"\")
     return '\\n'.join(commands)     #At the end, join them by \\n
-
-
 """
 module_dict["_utils"+os.sep+"__init__.py"]="""
-#from .container_docker import *
+from .container_docker import Convert
 from .misc import *
+
+Convert(\"/home/system/Downloads/Dockerfile\",\".\")
 """
 
 import os
