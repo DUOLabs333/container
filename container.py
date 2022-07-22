@@ -101,6 +101,7 @@ class Container:
         
         self.build=False
         
+        self.base=False
         self.ports=[]
         if self.namespaces.net:
             self.netns=f"{self.name}-netns"
@@ -226,6 +227,9 @@ class Container:
         #Run(f'(while true; do "{command}"; sleep {delay}; done)')
         
     def Base(self,base):
+        if self.base:
+            return #Prevent multiple bases
+        self.base=True
         #Make Base a synonym for Layer
         return self.Layer(base)
         
