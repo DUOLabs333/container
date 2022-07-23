@@ -164,7 +164,7 @@ def Import(uri,path,dockerfile=None):
     
     #Delete all unneccessary keys
     for _ in list(config.keys()):
-        if _==\"config\":
+        if _!=\"config\":
             del config[_]
     config=config['config']
     
@@ -327,7 +327,7 @@ def CompileDockerJson(file):
             for _ in config['ExposedPorts']:
                 _=_.split(\"/\")[0]
                 commands.append(f\"Port({_},{_})\")
-        if key==\"Cmd\" or key==\"Entrypoint\":
+        if key in [\"Cmd\",\"Entrypoint\"]:
             commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config[key])}\\\"\\\"\\\")\"\"\")
     return layers, commands
 

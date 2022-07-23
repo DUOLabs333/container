@@ -127,7 +127,7 @@ def Import(uri,path,dockerfile=None):
     
     #Delete all unneccessary keys
     for _ in list(config.keys()):
-        if _=="config":
+        if _!="config":
             del config[_]
     config=config['config']
     
