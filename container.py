@@ -99,7 +99,7 @@ class Container:
         self.uid=utils.get_value(_uid,0 if self.namespaces.user else os.getuid())
         self.gid=utils.get_value(_gid,0 if self.namespaces.user else os.getgid())
         
-        self.shell=utils.get_value(_shell,"/bin/sh")
+        self.shell=utils.get_value(_shell,"/bin/bash")
         
         self.temp_layers=[]
         
