@@ -120,10 +120,17 @@ def Import(uri,path,dockerfile=None):
     config=s.get(f"https://{registry}/v2/{image}/blobs/{config}", headers={"Accept":"application/vnd.docker.container.image.v1+json"}).json()
     
     #Add layers that will be used by Container.Start
-    config['rootfs']['layers']=[os.path.join(registry,_.removeprefix("sha256:")) for _ in layers]
+    config['config']['layers']=[os.path.join(registry,_.removeprefix("sha256:")) for _ in layers]
+    
     if "ExposedPorts" not in config['config']:
         config['config']['ExposedPorts']={}
-        
+    
+    #Delete all unneccessary keys
+    for _ in list(config.keys()):
+        if _=="config":
+            del config[_]
+    config=config['config']
+    
     config=json.dumps(config).encode('utf-8')
     config_path=pathlib.Path(os.path.join(path,registry,image,tag))
     config_path.mkdir(parents=True, exist_ok=True)
@@ -268,17 +275,21 @@ def CompileDockerJson(file):
     with open(file,"rb") as f:
       config=json.load(f)
     
-    for _ in config['rootfs']['layers']:
-        layers.append(f"Layer('{_}')")
-    
-    for _ in config['config']['Env']:
-        commands.append(f"""Env(\"\"\"{_}\"\"\")""")
-    
-    commands.append(f"Workdir('{config['config']['WorkingDir']}')")
-    
-    for _ in config['config']['ExposedPorts']:
-        _=_.split("/")[0]
-        commands.append(f"Port({_},{_})")
-    
-    commands.append(f"""Run(\"\"\"{shlex.join(config['config']['Cmd'])}\"\"\")""")
+    for key in config:
+        if key not in config:
+            continue
+        if key=="layers":
+            for _ in config[key]:
+                layers.append(f"Layer('{_}')")
+        elif key=="Env":
+            for _ in config['Env']:
+                commands.append(f"""Env(\"\"\"{_}\"\"\")""")
+        elif key=="WorkingDir":
+            commands.append(f"Workdir('{config['WorkingDir']}')")
+        elif key=="ExposedPorts":
+            for _ in config['ExposedPorts']:
+                _=_.split("/")[0]
+                commands.append(f"Port({_},{_})")
+        if key in ["Cmd","Entrypoint"]:
+            commands.append(f"""Run(\"\"\"{shlex.join(config[key])}\"\"\")""")
     return layers, commands
