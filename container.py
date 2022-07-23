@@ -74,14 +74,13 @@ class Container:
     def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
-
-        self.Class = utils.Class(self)
         
         self.original_name=_name #For use in Init
         if ":" in _name or 'pull' in _flags: #Is a container
             _name='/'.join(_utils.container_docker.parse_uri(_name))
-            
-        self.Class.class_init(_name,_flags,_workdir)
+        
+        self.Class = utils.Class(self,_name,_flags,_workdir)
+        
         
         self.normalized_name=self.name.replace("/","_")
         self.unionopts=utils.get_value(_unionopts,[])
