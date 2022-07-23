@@ -308,9 +308,15 @@ class Container:
         self.Mount(volume_path,path)
         
         
-    def Port(self,_from,_to):
+    def Port(self,_from,_to=None):
+        if not _to:
+            _to=_from
+        
         _from=int(_from)
         _to=int(_to)
+        
+        if _to in self.ports:
+            return
         if not self.namespaces.net:
             if _from==_to:
                 return #If the ports are the same, don't socat it, since it will take up the port.
