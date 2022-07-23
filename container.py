@@ -109,7 +109,7 @@ class Container:
         
         self.base=False
         self.ports=[]
-
+        self._load() #Read from lock to initialize the same state
         if self.namespaces.net:
             self.netns=f"{self.normalizedname}-netns"
             self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
@@ -126,7 +126,66 @@ class Container:
         
         
     #Functions        
+    def _update(self,keys):
+        if self.build:
+            return #No lock file when building --- no need for it
+        if isinstance(keys,str):
+            keys=[keys]
+        
+        with open(self.lock,"r") as f:
+            data=json.load(f)
+            
+        for key in keys:
+            data[key]=getattr(self,key)
+        
+        with open(self.lock,"w+") as f:
+            json.dump(data,f)
+             
+    def _exit(self,a,b):
+        
+        self.Class.kill_auxiliary_processes()
+        
+        #Unmount dev,proc, etc. if directory exists
+        if os.path.isdir("merged"):
+            for dir in os.listdir("merged"):
+                if os.path.ismount(f"merged/{dir}"):
+                    if sys.platform=='linux':
+                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
+                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                    elif sys.platform=='darwin':
+                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
+                    elif sys.platform=='cygwin':
+                        utils.shell_command(["umount",f"merged/{dir}"])
+                    
+        
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
+        for dir in diff_directories:
+             utils.shell_command(["umount","-l",dir])
+             utils.shell_command(["rm","-rf",dir])
+        utils.shell_command(["umount","-l","merged"])
     
+        
+        for hardlink in self.hardlinks:
+            os.remove(hardlink) #Remove volume hardlinks when done
+        
+        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
+        
+        if self.namespaces.net:
+            utils.shell_command(["sudo","ip","netns","del",self.netns])
+        
+        for port in self.ports:
+            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
+                utils.kill_process_gracefully(pid) #Kill socat(s)
+
+        exit()
+    
+    def _load(self):
+        if os.path.isfile(self.lock):
+            with open(self.lock,"r") as f:
+                data=json.load(f)
+            
+            for key in data:
+                setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
     def Ps(self,process=None):
         if process=="main" or ("main" in self.flags):
             return self.Class.get_main_process()
@@ -312,57 +371,6 @@ class Container:
             
             return utils.shell_command(_utils.misc.chroot_command(self,command),stdout=stdout,stderr=stderr)
     
-    def _update(self,keys):
-        if self.build:
-            return #No lock file when building --- no need for it
-        if isinstance(keys,str):
-            keys=[keys]
-        
-        with open(self.lock,"r") as f:
-            data=json.load(f)
-            
-        for key in keys:
-            data[key]=getattr(self,key)
-        
-        with open(self.lock,"w+") as f:
-            json.dump(data,f)
-             
-    def _exit(self,a,b):
-        self.Class.kill_auxiliary_processes()
-        
-        #Unmount dev,proc, etc. if directory exists
-        if os.path.isdir("merged"):
-            for dir in os.listdir("merged"):
-                if os.path.ismount(f"merged/{dir}"):
-                    if sys.platform=='linux':
-                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
-                    elif sys.platform=='darwin':
-                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
-                    elif sys.platform=='cygwin':
-                        utils.shell_command(["umount",f"merged/{dir}"])
-                    
-        
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
-        for dir in diff_directories:
-             utils.shell_command(["umount","-l",dir])
-             utils.shell_command(["rm","-rf",dir])
-        utils.shell_command(["umount","-l","merged"])
-    
-        
-        for hardlink in self.hardlinks:
-            os.remove(hardlink) #Remove volume hardlinks when done
-        
-        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
-        
-        if self.namespaces.net:
-            utils.shell_command(["sudo","ip","netns","del",self.netns])
-        
-        for port in self.ports:
-            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
-                utils.kill_process_gracefully(pid) #Kill socat(s)
-
-        exit()
             
     #Commands      
     def Start(self):
@@ -461,11 +469,6 @@ class Container:
             stopped=True
         else:
             stopped=False
-            with open(self.lock,"r") as f:
-                data=json.load(f)
-            
-            for key in data:
-                setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
             
         command=self.shell #By default, run the shell
         if "run" in self.flags:
