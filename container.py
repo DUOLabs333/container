@@ -80,8 +80,6 @@ class Container:
             _name='/'.join(_utils.container_docker.parse_uri(_name))
         
         self.Class = utils.Class(self,_name,_flags,_workdir)
-        
-        
         self.normalized_name=self.name.replace("/","_")
         self.unionopts=utils.get_value(_unionopts,[])
         
@@ -322,10 +320,10 @@ class Container:
                 return #If the ports are the same, don't socat it, since it will take up the port.
         for proto in ["tcp","udp"]:
             if self.namespaces.net:
-                sock_name=os.path.join(self.temp,f"{proto}-{temp,str(_to)}.sock")
+                sock_name=os.path.join(self.temp,f"{proto}-{_to}.sock")
                #utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
                 utils.shell_command(["sudo","ip","netns","exec",self.netns,"socat",f"UNIX-LISTEN:{sock_name},fork",f"{proto}-connect:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
-                utils.shell_command(["socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
+                utils.shell_command(["sudo","socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
             else:
                utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)
