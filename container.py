@@ -110,7 +110,7 @@ class Container:
         self.ports=[]
         self._load() #Read from lock to initialize the same state
         if self.namespaces.net:
-            self.netns=f"{self.normalizedname}-netns"
+            self.netns=f"{self.normalized_name}-netns"
             self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
             
             while True:
@@ -322,7 +322,10 @@ class Container:
                 return #If the ports are the same, don't socat it, since it will take up the port.
         for proto in ["tcp","udp"]:
             if self.namespaces.net:
-               utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+                sock_name=os.path.join(self.f"{proto}-{temp,str(_to)}.sock")
+               #utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+                utils.shell_command(["sudo","ip","netns","exec",self.netns,"socat",f"UNIX-LISTEN:{sock_name},fork",f"{proto}-connect:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+                utils.shell_command(["socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
             else:
                utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)

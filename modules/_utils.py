@@ -313,21 +313,19 @@ def CompileDockerJson(file):
       config=json.load(f)
     
     for key in config:
-        if key not in config:
-            continue
         if key==\"layers\":
             for _ in config[key]:
                 layers.append(f\"Layer('{_}')\")
         elif key==\"Env\":
-            for _ in config['Env']:
+            for _ in config[key]:
                 commands.append(f\"\"\"Env(\\\"\\\"\\\"{_}\\\"\\\"\\\")\"\"\")
         elif key==\"WorkingDir\":
-            commands.append(f\"Workdir('{config['WorkingDir']}')\")
+            commands.append(f\"Workdir('{config[key]}')\")
         elif key==\"ExposedPorts\":
-            for _ in config['ExposedPorts']:
+            for _ in config[key]:
                 _=_.split(\"/\")[0]
                 commands.append(f\"Port({_},{_})\")
-        if key in [\"Cmd\",\"Entrypoint\"]:
+        if key==\"Cmd\":
             commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config[key])}\\\"\\\"\\\")\"\"\")
     return layers, commands
 
@@ -336,7 +334,7 @@ module_dict["_utils"+os.sep+"__init__.py"]="""
 from .container_docker import Convert
 from .misc import *
 
-Convert(\"/home/system/Downloads/Dockerfile\",\".\")
+
 """
 
 import os
