@@ -131,7 +131,7 @@ def Import(uri,path,dockerfile=None):
             del config[_]
     config=config['config']
     
-    config=json.dumps(config).encode('utf-8')
+    config=json.dumps(config,indent=4).encode('utf-8')
     config_path=pathlib.Path(os.path.join(path,registry,image,tag))
     config_path.mkdir(parents=True, exist_ok=True)
     config_path/="docker.json"
