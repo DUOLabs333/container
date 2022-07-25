@@ -416,12 +416,12 @@ class Container:
                 docker_layers, docker_commands=_utils.container_docker.CompileDockerJson("docker.json")
             
             #Set up layers first from docker_kayer
-            utils.execute(self,'\n'.join(docker_layers))
+            self.Class.execute('\n'.join(docker_layers))
             
             #Run container-compose.py as an intermediary step
-            utils.execute(self,open("container-compose.py"))
+            self.Class.execute(open("container-compose.py"))
             
-            utils.execute(self,'\n'.join(docker_commands))
+            self.Class.execute('\n'.join(docker_commands))
             
             #Don't have to put Run() in container-compose.py just to start it
             self.Run()
@@ -435,7 +435,7 @@ class Container:
         signal.signal(signal.SIGTERM,self._exit)
         signal.signal(signal.SIGINT,self._exit)
         
-        utils.execute(self,open("Containerfile.py"))
+        self.Class.execute(open("Containerfile.py"))
 
         self.Stop()
         _utils.misc.remove_empty_folders_in_diff()
