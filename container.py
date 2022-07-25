@@ -91,7 +91,7 @@ class Container:
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
         
-        self.namespaces={"user":str2bool(os.getenv("CONTAINER_USER_NAMESPACES","0"),"net":str2bool(os.getenv("CONTAINER_NET_NAMESPACES","0"))}
+        self.namespaces={"user":str2bool(os.getenv("CONTAINER_USER_NAMESPACES","0")),"net":str2bool(os.getenv("CONTAINER_NET_NAMESPACES","0"))}
         
         self.workdir=_workdir
         
