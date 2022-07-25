@@ -235,6 +235,7 @@ class Container:
             if not os.path.ismount(f"diff{OUT}"):
                 utils.shell_command(["bindfs",IN,f"diff{OUT}"]) #Only use bindfs 1.15.1
         else:
+            os.makedirs(os.path.dirname(f"diff{OUT}"),exist_ok=True) #Make parent directory if it doesn't exist
             try:
                 os.link(IN,f"diff{OUT}")
             except FileExistsError:
