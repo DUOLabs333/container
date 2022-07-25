@@ -26,6 +26,16 @@ utils.GLOBALS=globals()
 
 SHELL_CWD=os.environ.get("PWD")
 
+def convert_colon_string_to_directory(string):
+    string=utils.split_string_by_char(string,char=":")
+    if string[0]=="root":
+        string=string[1] #The directory is just the absolute path in the host
+    elif len(string)==1:
+        string=string[0] # No container was specified, so assume "root"
+    else:
+        string=f"{utils.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
+    string=os.path.expanduser(string)
+    return string
 utils.get_all_items=_utils.misc.get_all_items
   
 class Container:
@@ -215,7 +225,7 @@ class Container:
             return list(map(int,processes))
     
     def Mount(self,IN,OUT):
-        IN=_utils.misc.convert_colon_string_to_directory(IN)
+        IN=convert_colon_string_to_directory(IN)
         if os.path.isdir(IN):
             try:
                 os.makedirs(f"diff{OUT}",exist_ok=True)
@@ -241,7 +251,7 @@ class Container:
         else:
             dest=f"diff{dest}"
         
-        src=_utils.misc.convert_colon_string_to_directory(src)
+        src=convert_colon_string_to_directory(src)
         #Relative directory
         if not src.startswith("/"):
             src=f"{SHELL_CWD}/{src}"

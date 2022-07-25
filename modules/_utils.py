@@ -1,7 +1,7 @@
 import os
 module_dict={}
 module_dict["_utils"+os.sep+"misc.py"]="""
-import os, ast, getpass, sys
+import os, ast, getpass, sys, socket
 
 #Helper functions  
 def load_dependencies(self,root,layer):
@@ -33,16 +33,7 @@ def chroot_command(self,command):
         
     return result
      
-def convert_colon_string_to_directory(string):
-    string=utils.split_string_by_char(string,char=\":\")
-    if string[0]==\"root\":
-        string=string[1] #The directory is just the absolute path in the host
-    elif len(string)==1:
-        string=string[0] # No container was specified, so assume \"root\"
-    else:
-        string=f\"{utils.ROOT}/{string[0]}/diff{string[1]}\" # Container was specified, so use it
-    string=os.path.expanduser(string)
-    return string
+
     
 def is_port_in_use(port) :
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -79,6 +70,7 @@ def get_all_items(root):
            
 def str2bool(v):
   return v.lower() in (\"yes\", \"true\", \"t\", \"1\")
+
 """
 module_dict["_utils"+os.sep+"container_docker.py"]="""
 #!/usr/bin/env python
