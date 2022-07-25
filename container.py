@@ -14,6 +14,7 @@ import shutil
 import random
 import types
 import getpass
+import socket
 
 # < include '../utils/utils.py' >
 import utils
@@ -37,7 +38,9 @@ def convert_colon_string_to_directory(string):
     string=os.path.expanduser(string)
     return string
     
-
+def is_port_in_use(port) :
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(('127.0.0.1', port)) == 0
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
     for path, _, _ in walk[::-1]:
@@ -313,8 +316,11 @@ class Container:
         _from=int(_from)
         _to=int(_to)
         
+        if is_port_in_use(_to): #Port is in use, so leave
+            return 
         if _to in self.ports:
             return
+        
         if not self.namespaces.net:
             if _from==_to:
                 return #If the ports are the same, don't socat it, since it will take up the port.
