@@ -3,18 +3,25 @@ module_dict={}
 module_dict["_utils"+os.sep+"misc.py"]="""
 import os, ast, getpass, sys, socket
 
+from .container_docker import CompileDockerJson
 #Helper functions  
 def load_dependencies(self,root,layer):
     if not os.path.isfile(f\"{root}/{layer}/container-compose.py\"):
         return #Don't error out if container-compose.py doesn't exist
-    with open(f\"{root}/{layer}/container-compose.py\") as fh:        
-       root = ast.parse(fh.read())
-       for node in ast.iter_child_nodes(root):
-           if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
-               function=node.value.func.id
-               if function in [\"Layer\",\"Base\",\"Env\",\"Shell\"]:
-                   arguments=[eval(ast.unparse(val)) for val in node.value.args]
-                   getattr(self,function)(*arguments) #Run function
+    
+    with open(f\"{root}/{layer}/container-compose.py\") as fh:
+        file=fh.read() 
+        
+    if os.path.isfile(f\"{root}/{layer}/docker.json\"):
+        docker_layers, docker_commands =CompileDockerJson(open(f\"{root}/{layer}/docker.json\"))
+        file=\"\\n\".join(docker_layers+file.splitlines()+docker_commands)
+      
+    for node in ast.iter_child_nodes(ast.parse(file)):
+       if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
+           function=node.value.func.id
+           if function in [\"Layer\",\"Base\",\"Env\",\"Shell\"]:
+               arguments=[eval(ast.unparse(val)) for val in node.value.args]
+               getattr(self,function)(*arguments) #Run function
 
 def chroot_command(self,command):
     if self.namespaces['user']:

@@ -44,7 +44,7 @@ def generate_random_string(N):
 class Container:
     def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
-            _name=''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(16)) #Generate string for temp containers
+            _name=generate_random_string(16) #Generate string for temp containers
         
         self.original_name=_name #For use in Init
         if ":" in _name or 'pull' in _flags: #Is a container
@@ -77,7 +77,7 @@ class Container:
         
         self.base=False
         self.ports=[]
-        self.netns=f"{self.normalized_name}-netns"
+    
         self.setup=False #Whether _setup was run once
         
                     
@@ -420,7 +420,7 @@ class Container:
             if shutil.which("ip"): #Otherwise, it wouldn't matter
                 while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
                      self.normalized_name=generate_random_string(7)
-                     
+                self.netns=f"{self.normalized_name}-netns"
             if os.path.isfile("docker.json"):
                 docker_layers, docker_commands=_utils.container_docker.CompileDockerJson("docker.json")
             
