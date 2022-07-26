@@ -160,73 +160,74 @@ class Container:
                 setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
     
     def _setup(self):
-        if not self.setup:
-            if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
-                self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
-                      
-                temp=[]
-                for _ in self.unionopts:
-                    temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
-                self.unionopts=":".join(temp)
-                
-            #Prevent merged from being mounted multiple times
-            if not os.path.ismount("merged"):
-                utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+        if self.setup:
+            return
+        if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
+            self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
+                  
+            temp=[]
+            for _ in self.unionopts:
+                temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
+            self.unionopts=":".join(temp)
+            
+        #Prevent merged from being mounted multiple times
+        if not os.path.ismount("merged"):
+            utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+               
+        #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
+        if not self.mounted_special:
+            for dir in ["dev","proc"]:
+                if not os.path.ismount(f"merged/{dir}"):
+                    #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
+                    if sys.platform=="darwin":
+                        #MacOS doesn't have bind-mounts
+                        fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
+                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
+                    elif sys.platform=="cygwin":
+                        #Cygwin doesn't have rbind
+                        utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
+                    elif sys.platform=="linux":
+                        utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
                    
-            #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
-            if not self.mounted_special:
-                for dir in ["dev","proc"]:
-                    if not os.path.ismount(f"merged/{dir}"):
-                        #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
-                        if sys.platform=="darwin":
-                            #MacOS doesn't have bind-mounts
-                            fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
-                            utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
-                        elif sys.platform=="cygwin":
-                            #Cygwin doesn't have rbind
-                            utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
-                        elif sys.platform=="linux":
-                            utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
-                       
-                self.mounted_special=True
-                
-            if self.namespaces['net']: #Start network namespace
-                self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
-                #self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
-                
-                while True:
-                    cidr=[random.randint(0,255),random.randint(0,255)]
-                    if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
-                        continue
-                    else:
-                        self.veth_pair['host']['cidr']=f"{cidr[0]}.{cidr[1]}.0.1/24"
-                        self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
-                        break
-                
-                internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
-                commands=[
-                    ['ip', 'netns', 'add', self.netns],
-                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
-                    ['ip', 'link', 'add', self.veth_pair['host']['name'], 'type', 'veth', 'peer', 'name', self.veth_pair['netns']['name']],
-                    ['ip', 'link', 'set', self.veth_pair['netns']['name'], 'netns', self.netns],
-                    ['ip', 'addr', 'add', self.veth_pair['host']['cidr'], 'dev', self.veth_pair['host']['name']],
-                    ['ip', 'netns', 'exec', self.netns, 'ip', 'addr', 'add', self.veth_pair['netns']['cidr'], 'dev', self.veth_pair['netns']['name']],
-                    ['ip', 'link', 'set', self.veth_pair['host']['name'], 'up'],
-                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', self.veth_pair['netns']['name'], 'up'],
-                    ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
-                    ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
-                    ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
-                    ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair['netns']['cidr'], '-o', internet_interface, '-j', 'MASQUERADE'],
-                    ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair['host']['cidr'][:-3]],
-                    ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
-                    ]
-                
-                for command in commands:
-                    utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
-                
-                if not os.path.isdir("diff/etc"):
-                    os.makedirs("diff/etc",exist_ok=True)
-                utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+            self.mounted_special=True
+            
+        if self.namespaces['net']: #Start network namespace
+            self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
+            #self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
+            
+            while True:
+                cidr=[random.randint(0,255),random.randint(0,255)]
+                if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
+                    continue
+                else:
+                    self.veth_pair['host']['cidr']=f"{cidr[0]}.{cidr[1]}.0.1/24"
+                    self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
+                    break
+            
+            internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
+            commands=[
+                ['ip', 'netns', 'add', self.netns],
+                ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
+                ['ip', 'link', 'add', self.veth_pair['host']['name'], 'type', 'veth', 'peer', 'name', self.veth_pair['netns']['name']],
+                ['ip', 'link', 'set', self.veth_pair['netns']['name'], 'netns', self.netns],
+                ['ip', 'addr', 'add', self.veth_pair['host']['cidr'], 'dev', self.veth_pair['host']['name']],
+                ['ip', 'netns', 'exec', self.netns, 'ip', 'addr', 'add', self.veth_pair['netns']['cidr'], 'dev', self.veth_pair['netns']['name']],
+                ['ip', 'link', 'set', self.veth_pair['host']['name'], 'up'],
+                ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', self.veth_pair['netns']['name'], 'up'],
+                ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
+                ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
+                ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
+                ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair['netns']['cidr'], '-o', internet_interface, '-j', 'MASQUERADE'],
+                ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair['host']['cidr'][:-3]],
+                ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
+                ]
+            
+            for command in commands:
+                utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
+            
+            if not os.path.isdir("diff/etc"):
+                os.makedirs("diff/etc",exist_ok=True)
+            utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
             self._update()
             self.setup=True
     def Ps(self,process=None):
