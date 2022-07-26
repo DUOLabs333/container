@@ -40,7 +40,14 @@ utils.get_all_items=_utils.misc.get_all_items
 
 def generate_random_string(N):
     return ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(N)) 
-    
+
+def is_jsonable(x):
+    try:
+        json.dumps(x)
+        return True
+    except (TypeError, OverflowError):
+        return False
+          
 class Container:
     def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
@@ -88,12 +95,15 @@ class Container:
         
         
     #Functions        
-    def _update(self,keys):
+    def _update(self,keys=None):
         if self.build:
             return #No lock file when building --- no need for it
         if isinstance(keys,str):
             keys=[keys]
         
+        if not keys: #Just json it all
+            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(attr)]
+            
         with open(self.lock,"r") as f:
             data=json.load(f)
             
@@ -217,6 +227,7 @@ class Container:
                 if not os.path.isdir("diff/etc"):
                     os.makedirs("diff/etc",exist_ok=True)
                 utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+            self._update()
             self.setup=True
     def Ps(self,process=None):
         if process=="main" or ("main" in self.flags):
