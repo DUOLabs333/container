@@ -14,7 +14,7 @@ import shutil
 import random
 import types
 import getpass
-import socket
+import random, string
 
 # < include '../utils/utils.py' >
 import utils
@@ -37,7 +37,10 @@ def convert_colon_string_to_directory(string):
     string=os.path.expanduser(string)
     return string
 utils.get_all_items=_utils.misc.get_all_items
-  
+
+def generate_random_string(N):
+    return ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(N)) 
+    
 class Container:
     def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
@@ -48,7 +51,7 @@ class Container:
             _name='/'.join(_utils.container_docker.parse_uri(_name))
         
         self.Class = utils.Class(self,_name,_flags,_workdir)
-        self.normalized_name=self.name.replace("/","_")
+        
         self.unionopts=utils.get_value(_unionopts,[])
         
         self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
@@ -177,43 +180,43 @@ class Container:
                        
                 self.mounted_special=True
                 
-                if self.namespaces['net']: #Start network namespace
-                    self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
-                    #self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
-                    
-                    while True:
-                        cidr=[random.randint(0,255),random.randint(0,255)]
-                        if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
-                            continue
-                        else:
-                            self.veth_pair['host']['cidr']=f"{cidr[0]}.{cidr[1]}.0.1/24"
-                            self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
-                            break
-                    
-                    internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
-                    commands=[
-                        ['ip', 'netns', 'add', self.netns],
-                        ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
-                        ['ip', 'link', 'add', self.veth_pair['host']['name'], 'type', 'veth', 'peer', 'name', self.veth_pair['netns']['name']],
-                        ['ip', 'link', 'set', self.veth_pair['netns']['name'], 'netns', self.netns],
-                        ['ip', 'addr', 'add', self.veth_pair['host']['cidr'], 'dev', self.veth_pair['host']['name']],
-                        ['ip', 'netns', 'exec', self.netns, 'ip', 'addr', 'add', self.veth_pair['netns']['cidr'], 'dev', self.veth_pair['netns']['name']],
-                        ['ip', 'link', 'set', self.veth_pair['host']['name'], 'up'],
-                        ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', self.veth_pair['netns']['name'], 'up'],
-                        ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
-                        ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
-                        ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
-                        ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair['netns']['cidr'], '-o', internet_interface, '-j', 'MASQUERADE'],
-                        ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair['host']['cidr'][:-3]],
-                        ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
-                        ]
-                    
-                    for command in commands:
-                        utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
-                    
-                    if not os.path.isdir("diff/etc"):
-                        os.makedirs("diff/etc",exist_ok=True)
-                    utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+            if self.namespaces['net']: #Start network namespace
+                self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
+                #self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
+                
+                while True:
+                    cidr=[random.randint(0,255),random.randint(0,255)]
+                    if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
+                        continue
+                    else:
+                        self.veth_pair['host']['cidr']=f"{cidr[0]}.{cidr[1]}.0.1/24"
+                        self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
+                        break
+                
+                internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True) 
+                commands=[
+                    ['ip', 'netns', 'add', self.netns],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
+                    ['ip', 'link', 'add', self.veth_pair['host']['name'], 'type', 'veth', 'peer', 'name', self.veth_pair['netns']['name']],
+                    ['ip', 'link', 'set', self.veth_pair['netns']['name'], 'netns', self.netns],
+                    ['ip', 'addr', 'add', self.veth_pair['host']['cidr'], 'dev', self.veth_pair['host']['name']],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'addr', 'add', self.veth_pair['netns']['cidr'], 'dev', self.veth_pair['netns']['name']],
+                    ['ip', 'link', 'set', self.veth_pair['host']['name'], 'up'],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', self.veth_pair['netns']['name'], 'up'],
+                    ['sysctl', '-w', 'net.ipv4.ip_forward=1'],
+                    ['iptables', '-A', 'FORWARD', '-o', internet_interface, '-i', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
+                    ['iptables', '-A', 'FORWARD', '-i', internet_interface, '-o', self.veth_pair['host']['name'], '-j', 'ACCEPT'],
+                    ['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-s', self.veth_pair['netns']['cidr'], '-o', internet_interface, '-j', 'MASQUERADE'],
+                    ['ip', 'netns', 'exec', self.netns, 'ip', 'route', 'add', 'default', 'via', self.veth_pair['host']['cidr'][:-3]],
+                    ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
+                    ]
+                
+                for command in commands:
+                    utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
+                
+                if not os.path.isdir("diff/etc"):
+                    os.makedirs("diff/etc",exist_ok=True)
+                utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
             self.setup=True
     def Ps(self,process=None):
         if process=="main" or ("main" in self.flags):
@@ -348,6 +351,7 @@ class Container:
         
         if _utils.misc.is_port_in_use(_to): #Port is in use, so leave
             return 
+            
         if _to in self.ports:
             return
         
@@ -412,6 +416,11 @@ class Container:
             docker_layers=[]
             docker_commands=[]
             
+            self.normalized_name=generate_random_string(7)
+            if shutil.which("ip"): #Otherwise, it wouldn't matter
+                while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
+                     self.normalized_name=generate_random_string(7)
+                     
             if os.path.isfile("docker.json"):
                 docker_layers, docker_commands=_utils.container_docker.CompileDockerJson("docker.json")
             

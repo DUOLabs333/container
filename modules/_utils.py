@@ -360,11 +360,15 @@ def CompileDockerJson(file):
         elif key==\"WorkingDir\":
             commands.append(f\"Workdir('{config[key]}')\")
         elif key==\"ExposedPorts\":
+            pass
             for _ in config[key]:
                 _=_.split(\"/\")[0]
                 commands.append(f\"Port({_},{_})\")
-        if key==\"Cmd\":
-            commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(config[key])}\\\"\\\"\\\")\"\"\")
+    if 'Cmd' in config:
+        command=config['Cmd']
+        if 'Entrypoint' in config:
+            command=config['Entrypoint']+command
+        commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(command)}\\\"\\\"\\\")\"\"\")
     return layers, commands
 
 """
