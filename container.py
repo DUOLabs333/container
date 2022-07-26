@@ -102,7 +102,7 @@ class Container:
             keys=[keys]
         
         if not keys: #Just json it all
-            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(attr)]
+            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(getattr(self,attr))]
             
         with open(self.lock,"r") as f:
             data=json.load(f)
