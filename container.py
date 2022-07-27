@@ -200,7 +200,7 @@ class Container:
             
             while True:
                 cidr=[random.randint(0,255),random.randint(0,255)]
-                if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL)): #Check if CIDR range is already taken
+                if any(f"{cidr[0]}.{cidr[1]}.0.1/24" in _ for _ in utils.shell_command(["ip","addr"],stderr=subprocess.DEVNULL).splitlines()): #Check if CIDR range is already taken
                     continue
                 else:
                     self.veth_pair['host']['cidr']=f"{cidr[0]}.{cidr[1]}.0.1/24"
