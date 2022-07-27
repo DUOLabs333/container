@@ -494,7 +494,21 @@ class Container:
         if "and-stop" in self.flags:
             return [self.Stop()]
     
-    
+    def Prune(self):
+        root=os.path.join(utils.ROOT,self.name)
+        containers=_utils.misc.get_all_items(root)
+        layers={'container':[],"folder":[]}
+        for _ in containers:
+            with open(os.path.join(root,_,"docker.json")) as f:
+                layers['container'].extend(json.load(f)["layers"])
+                
+        for _ in os.listdir(root):
+            if os.listdir(os.path.join(root,_))==['diff']: #All non-container layers
+                layers['folder'].append(os.path.join(self.name,_))
+        
+        difference=[_ for _ in layers['folder'] if _ not in layers['container']] #Get unused layers
+        for _ in difference:
+            self.__class__(_).Delete()
     def List(self):
         return self.Class.list()
 
