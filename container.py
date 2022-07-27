@@ -509,6 +509,7 @@ class Container:
         difference=[_ for _ in layers['folder'] if _ not in layers['container']] #Get unused layers
         for _ in difference:
             self.__class__(_).Delete()
+            
     def List(self):
         return self.Class.list()
 
