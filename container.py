@@ -176,7 +176,8 @@ class Container:
         if self.shell=="": #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
                 if os.path.islink(f"merged/bin/{shell}") or os.path.isfile(f"merged/bin/{shell}"): #Handle broken symlinks
-                    self.Shell(f"/bin/{shell}")    
+                    self.Shell(f"/bin/{shell}")
+                    break
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc"]:
