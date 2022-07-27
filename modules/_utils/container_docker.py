@@ -36,8 +36,12 @@ def parse_uri(uri):
     
     if image.startswith('/'):
         image=image[1:]
-        
-    image = image.split(':')
+    
+    if '@' in image: #Support specifying digests with @{digest}
+        image=image.split('@')
+        image[1]="@"+image[1]
+    else:
+        image = image.split(':')
     
     if len(image)==1:
         image.append('latest')
@@ -72,7 +76,7 @@ def Import(uri,path,dockerfile=None):
     s.headers['Authorization']=f"Bearer {token}"
     s.headers["Accept"]="application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
     
-    manifest=s.get(f"https://{registry}/v2/{image}/manifests/{tag}").json()
+    manifest=s.get(f"https://{registry}/v2/{image}/manifests/{tag.replace('@','sha256:')}").json() #Digests must be prefixed with the hash algorithm used
     
     #Find the architecture 
     architecture=platform.machine()

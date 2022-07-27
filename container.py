@@ -502,10 +502,11 @@ class Container:
         containers=_utils.misc.get_all_items(root)
         layers={'container':[],"folder":[]}
         for _ in containers:
-            if not os.path.isfile(os.path.join(root,_,"docker.json")): #If it doesn't exist for any container, root is not a Docker registry, and can be safely ignored
+            try:
+                with open(os.path.join(root,_,"docker.json")) as f:
+                    layers['container'].extend(json.load(f)["layers"])
+            except FileNotFoundError: #If docker.json doesn't exist for any container, root is not a Docker registry, and can be safely ignored
                 return
-            with open(os.path.join(root,_,"docker.json")) as f:
-                layers['container'].extend(json.load(f)["layers"])
                 
         for _ in os.listdir(root):
             if os.listdir(os.path.join(root,_))==['diff']: #All non-container layers
