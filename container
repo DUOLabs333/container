@@ -119,7 +119,7 @@ def is_jsonable(x):
         return False
           
 class Container:
-    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
+    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=""):
         if 'temp' in _flags:
             _name=generate_random_string(16) #Generate string for temp containers
         
@@ -144,7 +144,7 @@ class Container:
         self.uid=utils.get_value(_uid,0 if self.namespaces['user'] else os.getuid())
         self.gid=utils.get_value(_gid,0 if self.namespaces['user'] else os.getgid())
         
-        self.shell=utils.get_value(_shell,"/bin/bash")
+        self.shell=_shell
         
         self.temp_layers=[]
         
@@ -243,9 +243,10 @@ class Container:
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
             utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
-        for shell in ["bash","ash","sh"]:
-            if os.path.isfile(f"diff/bin/{shell}"):
-                self.Shell(f"/bin/{shell}")    
+        if self.shell=="": #Only set if it doesn't exist yet
+            for shell in ["bash","ash","sh"]:
+                if os.path.isfile(f"diff/bin/{shell}"):
+                    self.Shell(f"/bin/{shell}")    
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc"]:
