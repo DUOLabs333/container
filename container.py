@@ -173,7 +173,9 @@ class Container:
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
             utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
-               
+        for shell in ["bash","ash","sh"]:
+            if os.path.isfile(f"diff/bin/{shell}"):
+                self.Shell(f"/bin/{shell}")    
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc"]:

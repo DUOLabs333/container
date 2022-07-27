@@ -281,7 +281,7 @@ def CompileDockerJson(file):
                 layers.append(f"Layer('{_}')")
         elif key=="Env":
             for _ in config[key]:
-                commands.append(f"""Env(\"\"\"{_}\"\"\")""")
+                layers.append(f"""Env(\"\"\"{_}\"\"\")""")
         elif key=="WorkingDir":
             commands.append(f"Workdir('{config[key]}')")
         elif key=="ExposedPorts":
