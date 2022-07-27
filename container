@@ -572,6 +572,8 @@ class Container:
         containers=_utils.misc.get_all_items(root)
         layers={'container':[],"folder":[]}
         for _ in containers:
+            if not os.path.isfile(os.path.join(root,_,"docker.json")): #If it doesn't exist for any container, root is not a Docker registry, and can be safely ignored
+                return
             with open(os.path.join(root,_,"docker.json")) as f:
                 layers['container'].extend(json.load(f)["layers"])
                 
@@ -579,6 +581,8 @@ class Container:
             if os.listdir(os.path.join(root,_))==['diff']: #All non-container layers
                 layers['folder'].append(os.path.join(self.name,_))
         
+        if layers['folder']==[]: #If there are no layers, then root is not a registry any can be safely ignored
+            return
         difference=[_ for _ in layers['folder'] if _ not in layers['container']] #Get unused layers
         for _ in difference:
             self.__class__(_).Delete()
