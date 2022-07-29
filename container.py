@@ -296,8 +296,9 @@ class Container:
         utils.wait(*args, **kwargs)
 
     def Layer(self,layer,mode="RO"):
+        layer=self.__class__(layer).name #Support getting Docker names
         if self.build:
-            if len(os.listdir(f"{utils.ROOT}/{layer}/diff"))<2:
+            if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
                 #Build layer if it doesn't exist
                 self.__class__(layer).Build()
                 #utils.shell_command(["container","build",layer])

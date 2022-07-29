@@ -293,6 +293,8 @@ def CompileDockerJson(file):
     if 'Cmd' in config:
         command=config['Cmd']
     if 'Entrypoint' in config:
+        if not config['Entrypoint']:
+            config['Entrypoint']=[]
         command=config['Entrypoint']+command
     commands.append(f"""Run(\"\"\"{shlex.join(command)}\"\"\")""")
     return layers, commands

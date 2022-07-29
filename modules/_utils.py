@@ -6,14 +6,14 @@ import os, ast, getpass, sys, socket
 from .container_docker import CompileDockerJson
 #Helper functions  
 def load_dependencies(self,root,layer):
-    if not os.path.isfile(f\"{root}/{layer}/container-compose.py\"):
+    if not os.path.isfile(os.path.join(root,layer,\"container-compose.py\")):
         return #Don't error out if container-compose.py doesn't exist
     
-    with open(f\"{root}/{layer}/container-compose.py\") as fh:
+    with open(os.path.join(root,layer,\"container-compose.py\")) as fh:
         file=fh.read() 
         
-    if os.path.isfile(f\"{root}/{layer}/docker.json\"):
-        docker_layers, docker_commands =CompileDockerJson(open(f\"{root}/{layer}/docker.json\"))
+    if os.path.isfile(os.path.join(root,layer,\"docker.json\")):
+        docker_layers, docker_commands =CompileDockerJson(os.path.join(root,layer,\"docker.json\"))
         file=\"\\n\".join(docker_layers+file.splitlines()+docker_commands)
       
     for node in ast.iter_child_nodes(ast.parse(file)):
@@ -375,6 +375,8 @@ def CompileDockerJson(file):
     if 'Cmd' in config:
         command=config['Cmd']
     if 'Entrypoint' in config:
+        if not config['Entrypoint']:
+            config['Entrypoint']=[]
         command=config['Entrypoint']+command
     commands.append(f\"\"\"Run(\\\"\\\"\\\"{shlex.join(command)}\\\"\\\"\\\")\"\"\")
     return layers, commands
