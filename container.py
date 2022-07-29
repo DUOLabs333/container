@@ -58,7 +58,6 @@ class Container:
             _name='/'.join(_utils.container_docker.parse_uri(_name))
         
         self.Class = utils.Class(self,_name,_flags,_workdir)
-        
         self.unionopts=utils.get_value(_unionopts,[])
         
         self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
@@ -102,7 +101,7 @@ class Container:
             keys=[keys]
         
         if not keys: #Just json it all
-            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(getattr(self,attr))]
+            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(getattr(self,attr)) and attr not in ['flags']]
             
         with open(self.lock,"r") as f:
             data=json.load(f)
@@ -581,7 +580,6 @@ utils.ROOT=utils.get_root_directory()
    
 if __name__ == "__main__":
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
-    
     for name in utils.list_items_in_root(NAMES, FLAGS):
         item=utils.CLASS(name,FLAGS)
         result=utils.execute_class_method(item,FUNCTION)
