@@ -302,8 +302,8 @@ class Container:
             if not os.path.isdir("diff/etc"):
                 os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
-            self._update()
-            self.setup=True
+        self._update()
+        self.setup=True
     def Ps(self,process=None):
         if process=="main" or ("main" in self.flags):
             return self.Class.get_main_process()
