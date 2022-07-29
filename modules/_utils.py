@@ -119,11 +119,7 @@ def parse_uri(uri):
     if image.startswith('/'):
         image=image[1:]
     
-    if '@' in image: #Support specifying digests with @{digest}
-        image=image.split('@')
-        image[1]=\"@\"+image[1]
-    else:
-        image = image.split(':')
+    image = image.split(':')
     
     if len(image)==1:
         image.append('latest')

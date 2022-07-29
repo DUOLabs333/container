@@ -133,7 +133,7 @@ class Container:
         diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
-             utils.shell_command(["rm","-rf",dir])
+             #utils.shell_command(["rm","-rf",dir])
         utils.shell_command(["umount","-l","merged"])
     
         
