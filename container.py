@@ -145,8 +145,9 @@ class Container:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
         
         for port in self.ports:
-            for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}"]).splitlines()])):
-                utils.kill_process_gracefully(pid) #Kill socat(s)
+            for proto in ["TCP","UDP"]:
+                for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f":{port}","-s",f"{proto}:LISTEN"]).splitlines()])):
+                    utils.kill_process_gracefully(pid) #Kill socat(s)
 
         exit()
     
