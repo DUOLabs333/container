@@ -285,7 +285,7 @@ def CompileDockerJson(file):
         elif key=="WorkingDir":
             commands.append(f"Workdir('{config[key]}')")
         elif key=="ExposedPorts":
-            pass
+            continue
             for _ in config[key]:
                 _=_.split("/")[0]
                 commands.append(f"Port({_},{_})")
