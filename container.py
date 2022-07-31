@@ -49,7 +49,7 @@ def is_jsonable(x):
         return False
           
 class Container:
-    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=""):
+    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
         if 'temp' in _flags:
             _name=generate_random_string(16) #Generate string for temp containers
         
@@ -173,7 +173,7 @@ class Container:
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
             utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
-        if self.shell=="": #Only set if it doesn't exist yet
+        if not self.shell: #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
                 if os.path.islink(f"merged/bin/{shell}") or os.path.isfile(f"merged/bin/{shell}"): #Handle broken symlinks
                     self.Shell(f"/bin/{shell}")
@@ -484,14 +484,19 @@ class Container:
             stopped=True
         else:
             stopped=False
-            
-        command=self.shell #By default, run the shell
-        if "run" in self.flags:
-            command=self.flags["run"]
+              
         if stopped:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
+            while not hasattr(self,"netns") or not self.shell:
+                try:
+                    self._load()
+                except ValueError:
+                    pass
+        command=self.shell #By default, run the shell
+        if "run" in self.flags:
+            command=self.flags["run"]  
         utils.shell_command(_utils.misc.chroot_command(self,command),stdout=None)
         if stopped:
             self.Stop()
