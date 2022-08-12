@@ -55,6 +55,7 @@ Port(_from,_to) --- bind port $_from in container to port $_to on host
 Run(command="",pipe=False) --- Run $command in container. $pipe indicates whether output should be returned rather than being written to the log file
 
 Note: If you are on Linux, you can enable user and net namespaces with CONTAINER_USER_NAMESPACES=1 and CONTAINER_NET_NAMESPACES=1, respectively (do be aware that net namespaces are slower than on the root ns)
+If you do enable CONTAINER_USER_NAMESPACES, you can set up /etc/subuid and /etc/subgid if you want to be able to access other UIDs and GIDs.
 
 Commands:
 Start --- runs container-compose.py

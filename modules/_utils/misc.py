@@ -22,7 +22,7 @@ def load_dependencies(self,root,layer):
 
 def chroot_command(self,command):
     if self.namespaces['user']:
-        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"] #Unshare is available so use it  
+        result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged",f"--map-auto"]+self.maps #Unshare is available so use it
     else:
         result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"] # Unshare does not exist, so use chroot
         

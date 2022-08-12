@@ -1,19 +1,11 @@
 #!/usr/bin/env python
 import subprocess
-import re
 import sys
 import os
-import threading
-import time
 import ast
-#import pwd, grp
 import json
-import hashlib
 import signal
 import shutil
-import random
-import types
-import getpass
 import random, string
 
 # < include '../utils/utils.py' >
@@ -197,7 +189,6 @@ class Container:
             
         if self.namespaces['net']: #Start network namespace
             self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
-            #self.veth_pair=types.SimpleNamespace(netns=types.SimpleNamespace(name=f"{self.normalized_name}-veth0"),host=types.SimpleNamespace(name=f"{self.normalized_name}-veth1"))
             
             while True:
                 cidr=[random.randint(0,255),random.randint(0,255)]
@@ -234,6 +225,23 @@ class Container:
             if not os.path.isdir("diff/etc"):
                 os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+        
+        #Check whether you can map users and/or groups
+        self.maps=[]
+        username=os.environ['USER']
+        uid=os.getuid()
+        
+        if self.namespaces['user']:
+            for file in ['uid','gid']:
+                with open(f"/etc/sub{file}") as f:
+                    for line in f:
+                        if any(line.startswith(prefix) for prefix in [username,uid]): #User has a block of UIDs it can use
+                            if file=='uid':
+                                self.maps.append('--maps-users=auto')
+                            if file=='gid':
+                                self.maps.append('--maps-groups=auto')
+                            break #No need to continue looping
+              
         self._update()
         self.setup=True
     def Ps(self,process=None):
