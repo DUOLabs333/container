@@ -226,9 +226,11 @@ class Container:
                 ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
                 ]
             
+            temp_f=open(self.log,"w")
             for command in commands:
-                utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
-            
+                utils.shell_command(["sudo"]+command,stdout=temp_f)
+                utils.shell_command(["echo"]+command,stdout=temp_f)
+            temp_f.close()
             if not os.path.isdir("diff/etc"):
                 os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
@@ -522,6 +524,7 @@ class Container:
         if layers['folder']==[]: #If there are no layers, then root is not a registry any can be safely ignored
             return
         difference=[_ for _ in layers['folder'] if _ not in layers['container']] #Get unused layers
+        print(difference)
         for _ in difference:
             self.__class__(_).Delete()
             
