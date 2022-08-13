@@ -125,7 +125,7 @@ class Container:
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
-        utils.shell_command(["umount","-l","merged"])
+        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","-l","merged"])
     
         
         for hardlink in self.hardlinks:
@@ -164,7 +164,7 @@ class Container:
             
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
-            utils.shell_command(["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+            utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
         if not self.shell: #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
                 if os.path.islink(f"merged/bin/{shell}") or os.path.isfile(f"merged/bin/{shell}"): #Handle broken symlinks
@@ -237,9 +237,9 @@ class Container:
                     for line in f:
                         if any(line.startswith(prefix) for prefix in [username,uid]): #User has a block of UIDs it can use
                             if file=='uid':
-                                self.maps.append('--maps-users=auto')
+                                self.maps.append('--map-users=auto')
                             if file=='gid':
-                                self.maps.append('--maps-groups=auto')
+                                self.maps.append('--map-groups=auto')
                             break #No need to continue looping
               
         self._update()
