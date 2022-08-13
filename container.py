@@ -307,12 +307,12 @@ class Container:
 
     def Layer(self,layer,mode="RO"):
         layer=self.__class__(layer).name #Support getting Docker names
-        if self.build:
-            if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
-                #Build layer if it doesn't exist
-                self.__class__(layer).Build()
-                #utils.shell_command(["container","build",layer])
-                self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
+#        if self.build:
+#            if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
+#                #Build layer if it doesn't exist
+#                self.__class__(layer).Build()
+#                #utils.shell_command(["container","build",layer])
+#                self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         _utils.misc.load_dependencies(self,utils.ROOT,layer)
         if [layer,mode] not in self.unionopts:
             self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
@@ -465,6 +465,8 @@ class Container:
             exit()
         
     def Build(self):
+        if not os.path.exists("Containerfile.py"):
+            return #Only Build if there is a Containerfile.py
         self.Stop()
         self.build=True
         self.namespaces['net']=False #Don't enable it when building, as it just gets messy
