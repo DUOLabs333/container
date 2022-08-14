@@ -379,7 +379,7 @@ class Container:
         layer=self.__class__(layer).name #Support getting Docker names
         if self.build:
             if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
-                if os.path.exists("Containerfile.py"): #Only Build if there is a Containerfile.py
+                if os.path.exists(os.path.join(utils.ROOT,layer,"Containerfile.py")): #Only Build if there is a Containerfile.py
                     #Build layer if it doesn't exist
                     self.__class__(layer).Build()
                     #utils.shell_command(["container","build",layer])
