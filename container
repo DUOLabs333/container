@@ -287,11 +287,11 @@ class Container:
                 ["ip", "netns", "exec", self.netns, "sysctl", "-w", "net.ipv4.ip_unprivileged_port_start=1"]
                 ]
             
-            temp_f=open(self.log,"w")
+            #temp_f=open(self.log,"w")
             for command in commands:
-                utils.shell_command(["sudo"]+command,stdout=temp_f)
-                utils.shell_command(["echo"]+command,stdout=temp_f)
-            temp_f.close()
+                utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
+                #utils.shell_command(["echo"]+command,stdout=temp_f)
+            #temp_f.close()
             if not os.path.isdir("diff/etc"):
                 os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
