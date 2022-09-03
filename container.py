@@ -137,8 +137,8 @@ class Container:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
         
         for port in self.ports:
-            for command in [[f":{port}","-s","TCP:LISTEN"], [f"UDP:{port}"]]:
-                for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i"]+command).splitlines()])):
+            for proto in ["TCP","UDP"]:
+                for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f"{proto}@{port[0]}:{port[1]}"]+command).splitlines()])):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
 
         exit()
@@ -374,10 +374,25 @@ class Container:
         if not _to:
             _to=_from
         
-        _from=int(_from)
-        _to=int(_to)
+        _from=str(_from)
+        _to=str(_to)
         
-        if _utils.misc.is_port_in_use(_to): #Port is in use, so leave
+        if ":" not in _from:
+            _from=":"+_from
+            
+        if ":" not in _to:
+            _to=":"+_to
+        
+        _from=_from.split(":")
+        _to=_to.split(":")
+        
+        if _from[0]=="":
+            _from[0]=="127.0.0.1"
+            
+        if _to[0]=="":
+            _to[0]=="127.0.0.1"
+        
+        if _utils.misc.is_port_in_use(int(_to[1])): #Port is in use, so leave
             return 
             
         if _to in self.ports:
@@ -385,15 +400,15 @@ class Container:
         
         if not self.namespaces['net']:
             if _from==_to:
-                return #If the ports are the same, don't socat it, since it will take up the port.
+                return #If the source and destination are the same, don't socat it, since it will take up the port.
         for proto in ["tcp","udp"]:
             if self.namespaces['net']:
-                sock_name=os.path.join(self.temp,f"{proto}-{_to}.sock")
-                utils.shell_command(["socat", f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:127.0.0.1:{_from}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+                sock_name=os.path.join(self.temp,f"{proto}-{':'.join(to)}.sock")
+                utils.shell_command(["socat", f"{proto}-listen:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:{_from[0]}:{_from[1]}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
                 #utils.shell_command(["sudo","ip","netns","exec",self.netns,"socat",f"UNIX-LISTEN:{sock_name},fork",f"{proto}-connect:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
                 #utils.shell_command(["sudo","socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
             else:
-               utils.shell_command(["socat", f"{proto}-l:{_to},fork,reuseaddr,bind=127.0.0.1", f"{proto}:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+               utils.shell_command(["socat", f"{proto}-l:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"{proto}:{_from[0]}:{_from[1]}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)
         
     def Run(self,command="",pipe=False):

@@ -39,9 +39,9 @@ def chroot_command(self,command):
      
 
     
-def is_port_in_use(port) :
+def is_port_in_use(source) :
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(('127.0.0.1', port)) == 0
+        return s.connect_ex((source[0], source[1]) == 0
 
 def remove_empty_folders_in_diff():
     walk = list(os.walk("diff"))
