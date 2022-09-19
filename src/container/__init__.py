@@ -46,7 +46,7 @@ class Container:
         
         self.original_name=_name #For use in Init
         if ":" in _name or 'pull' in _flags: #Is a container
-            _name='/'.join(_utils.container_docker.parse_uri(_name))
+            _name='/'.join(parse_uri(_name))
         
         self.Class = utils.Class(self,_name,_flags,_workdir)
         self.unionopts=utils.get_value(_unionopts,[])
@@ -464,7 +464,7 @@ class Container:
                      self.normalized_name=generate_random_string(7)
                 self.netns=f"{self.normalized_name}-netns"
             if os.path.isfile("docker.json"):
-                docker_layers, docker_commands=_utils.container_docker.CompileDockerJson("docker.json")
+                docker_layers, docker_commands=CompileDockerJson("docker.json")
             
             #Set up layers first from docker_kayer
             utils.execute(self,'\n'.join(docker_layers))
@@ -558,7 +558,7 @@ class Container:
         
         if "pull" in self.flags:
             
-            _utils.container_docker.Import(self.original_name,utils.ROOT)
+            Import(self.original_name,utils.ROOT)
             
             if "dockerfile" in self.flags:
                 Convert(self.flags["dockerfile"],os.path.join(utils.ROOT,self.name))

@@ -1,6 +1,6 @@
 import os, ast, getpass, sys, socket
 
-from .container_docker import CompileDockerJson
+from .docker import CompileDockerJson
 #Helper functions  
 def load_dependencies(self,root,layer):
     if not os.path.isfile(os.path.join(root,layer,"container-compose.py")):

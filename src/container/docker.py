@@ -5,19 +5,13 @@ import sys, os
 import re, json
 import platform
 import subprocess, shutil
-# < include '../../utils/utils.py' >
+
 import utils
 
 import shlex
 import pathlib
-# < include 'requests.py' >
-import requests
 
-s = requests.Session()
-s.verify=False
 
-import urllib3
-urllib3.disable_warnings()
 
 def parse_uri(uri):
     #Convert urls into a proper format:
@@ -46,7 +40,16 @@ def parse_uri(uri):
     
     return (registry,image,tag)
 #Import from remote docker registry
-def Import(uri,path,dockerfile=None):    
+def Import(uri,path,dockerfile=None): 
+    
+    import requests
+    
+    s = requests.Session()
+    s.verify=False
+    
+    import urllib3
+    urllib3.disable_warnings()
+       
     #Make temp folder
     temp_folder=tempfile.mkdtemp()
     
@@ -159,6 +162,13 @@ def Import(uri,path,dockerfile=None):
 #Convert Dockerfile to Containerfile
 def Convert(IN,OUT):
     
+    import requests
+    
+    s = requests.Session()
+    s.verify=False
+    
+    import urllib3
+    urllib3.disable_warnings()
                 
     stage="" #Stage name
     stages=[]
