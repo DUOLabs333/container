@@ -8,7 +8,7 @@ import signal
 import shutil
 import random, string
 
-from .docker import Convert
+from .docker import *
 from .misc import *
 
 import utils
