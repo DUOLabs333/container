@@ -430,7 +430,7 @@ class Container:
                 stdout=log_file
                 stderr=subprocess.STDOUT
             
-            return utils.shell_command(chroot_command(self,command),stdout=stdout,stderr=stderr)
+            return utils.shell_command(chroot_command(self,command),stdout=stdout,stderr=stderr,stdin=subprocess.DEVNULL)
     
             
     #Commands      
@@ -514,6 +514,11 @@ class Container:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
+#            while not self.setup:
+#                try:
+#                    self._load()
+#                except ValueError:
+#                    pass
             while not hasattr(self,"netns") or not self.shell:
                 try:
                     self._load()
