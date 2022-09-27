@@ -438,46 +438,44 @@ class Container:
         if "Started" in self.Status():
             return f"Container {self.name} is already started"
         
-        #Fork process, so it can run in the background
-        pid=os.fork()
-        
         #If child, run code, then exit 
-        if pid==0:
-            with open(self.log,"a+") as f:
-                pass
-            #Open a lock file so I can find it with lsof later
-            lock_file=open(self.lock,"w+")
-            
-            with open(self.lock,"w+") as f:
-                json.dump({},f)
-            
-            self._update(["env","workdir", "uid","gid","shell"])
-            
-            signal.signal(signal.SIGTERM,self._exit)
-            
-            docker_layers=[]
-            docker_commands=[]
-            
-            self.normalized_name=generate_random_string(7)
-            if shutil.which("ip"): #Otherwise, it wouldn't matter
-                while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
-                     self.normalized_name=generate_random_string(7)
-                self.netns=f"{self.normalized_name}-netns"
-            if os.path.isfile("docker.json"):
-                docker_layers, docker_commands=CompileDockerJson("docker.json")
-            
-            #Set up layers first from docker_kayer
-            utils.execute(self,'\n'.join(docker_layers))
-            
-            #Run container-compose.py as an intermediary step
-            utils.execute(self,open("container-compose.py"))
-            
-            utils.execute(self,'\n'.join(docker_commands))
-            
-            #Don't have to put Run() in container-compose.py just to start it
-            self.Run()
-            self.Wait()
-            exit()
+        if os.fork()==0:
+            if os.fork()==0: #Double fork
+                with open(self.log,"a+") as f:
+                    pass
+                #Open a lock file so I can find it with lsof later
+                lock_file=open(self.lock,"w+")
+                
+                with open(self.lock,"w+") as f:
+                    json.dump({},f)
+                
+                self._update(["env","workdir", "uid","gid","shell"])
+                
+                signal.signal(signal.SIGTERM,self._exit)
+                
+                docker_layers=[]
+                docker_commands=[]
+                
+                self.normalized_name=generate_random_string(7)
+                if shutil.which("ip"): #Otherwise, it wouldn't matter
+                    while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
+                         self.normalized_name=generate_random_string(7)
+                    self.netns=f"{self.normalized_name}-netns"
+                if os.path.isfile("docker.json"):
+                    docker_layers, docker_commands=CompileDockerJson("docker.json")
+                
+                #Set up layers first from docker_kayer
+                utils.execute(self,'\n'.join(docker_layers))
+                
+                #Run container-compose.py as an intermediary step
+                utils.execute(self,open("container-compose.py"))
+                
+                utils.execute(self,'\n'.join(docker_commands))
+                
+                #Don't have to put Run() in container-compose.py just to start it
+                self.Run()
+                self.Wait()
+                exit()
         
     def Build(self):
         self.Stop()
