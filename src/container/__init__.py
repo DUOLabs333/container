@@ -438,9 +438,10 @@ class Container:
         if "Started" in self.Status():
             return f"Container {self.name} is already started"
         
-        #If child, run code, then exit 
+        
         if os.fork()==0:
             if os.fork()==0: #Double fork
+                #If child, run code, then exit 
                 with open(self.log,"a+") as f:
                     pass
                 #Open a lock file so I can find it with lsof later
@@ -450,7 +451,6 @@ class Container:
                     json.dump({},f)
                 
                 self._update(["env","workdir", "uid","gid","shell"])
-                
                 signal.signal(signal.SIGTERM,self._exit)
                 
                 docker_layers=[]
@@ -464,9 +464,9 @@ class Container:
                 if os.path.isfile("docker.json"):
                     docker_layers, docker_commands=CompileDockerJson("docker.json")
                 
-                #Set up layers first from docker_kayer
+                #Set up layers first from docker_layer
                 utils.execute(self,'\n'.join(docker_layers))
-                
+                print("Hello")
                 #Run container-compose.py as an intermediary step
                 utils.execute(self,open("container-compose.py"))
                 
@@ -476,6 +476,7 @@ class Container:
                 self.Run()
                 self.Wait()
                 exit()
+            exit()
         
     def Build(self):
         self.Stop()
