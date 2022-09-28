@@ -466,7 +466,6 @@ class Container:
                 
                 #Set up layers first from docker_layer
                 utils.execute(self,'\n'.join(docker_layers))
-                print("Hello")
                 #Run container-compose.py as an intermediary step
                 utils.execute(self,open("container-compose.py"))
                 
