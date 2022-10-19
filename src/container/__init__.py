@@ -182,7 +182,7 @@ class Container:
                         #Cygwin doesn't have rbind
                         utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
                     elif sys.platform=="linux":
-                        utils.shell_command(["sudo","mount","--rbind",f"/{dir}",f"merged/{dir}"])
+                        utils.shell_command(["sudo","mount","--rbind","--make-rprivate",f"/{dir}",f"merged/{dir}"])
                    
             self.mounted_special=True
             
