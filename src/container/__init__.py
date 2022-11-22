@@ -221,10 +221,11 @@ class Container:
                 utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
                 #utils.shell_command(["echo"]+command,stdout=temp_f)
             #temp_f.close()
-            if not os.path.isdir("diff/etc"):
-                os.makedirs("diff/etc",exist_ok=True)
+            os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
-        
+
+            os.makedirs("diff/tmp",exist_ok=True)
+            os.chmod('diff/tmp',stat.S_IRWXO)
         #Check whether you can map users and/or groups
         self.maps=[]
         username=os.environ['USER']
