@@ -225,7 +225,7 @@ class Container:
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
 
             os.makedirs("diff/tmp",exist_ok=True)
-            os.chmod('diff/tmp',stat.S_IRWXO)
+            os.chmod('diff/tmp',0o0777)
         #Check whether you can map users and/or groups
         self.maps=[]
         username=os.environ['USER']
