@@ -51,7 +51,7 @@ class Container:
         self.Class = utils.Class(self,_name,_flags,_workdir)
         self.unionopts=utils.get_value(_unionopts,[])
         
-        self.env=utils.get_value(_env,f"export PATH=/bin:/usr/sbin:/sbin:/usr/bin HOME=$(eval echo ~$(whoami))")
+        self.env=utils.get_value(_env,["PATH=/bin:/usr/sbin:/sbin:/usr/bin","HOME=$(eval echo ~$(whoami))"])
         
         #Whether we mounted dev, proc, etc.
         self.mounted_special=False
@@ -330,8 +330,8 @@ class Container:
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
         self._update("workdir")
     
-    def Env(self,*args, **kwargs):
-        self.env=utils.add_environment_variable_to_string(self.env,*args, **kwargs)
+    def Env(self,var):
+        self.env.append(var)
         self._update("env")
     
     def User(self,user=""):

@@ -1,5 +1,7 @@
 import os, ast, getpass, sys, socket
 
+import utils
+
 from .docker import CompileDockerJson
 #Helper functions  
 def load_dependencies(self,root,layer):
@@ -25,16 +27,18 @@ def chroot_command(self,command):
         result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"]+self.maps #Unshare is available so use it
     else:
         result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"] # Unshare does not exist, so use chroot
-        
-    result+=[f"{self.shell}","-c",f"{self.env}; cd {self.workdir}; {command}"]
-    
-    
+    if not self.shell: #No shell, so can't cd
+        if self.namespaces['user']: #Plain chroot doesn't have this option
+            result.extend([f'--wd={self.workdir}',command])
+        result=['env',' '.join(self.env)]+result
+    else:
+        result.extend([f"{self.shell}","-c",f"{utils.env_list_to_string(self.env)}; cd {self.workdir}; {command}"])
+
     if self.namespaces['net']:
         result=["sudo","ip","netns","exec",self.netns,"sudo","-u",getpass.getuser()]+result
     
-    if sys.platform!="cygwin" and not self.namespaces['user']:
+    if sys.platform!="cygwin" and not self.namespaces['user']: #Cygwin doesn't have chroot
         result=["sudo"]+result
-        
     return result
      
 
