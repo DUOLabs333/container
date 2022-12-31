@@ -304,7 +304,10 @@ class Container:
         
     def Wait(self,*args, **kwargs):
         utils.wait(*args, **kwargs)
-
+    
+    def Namespace(self,key,value):
+        self.namespaces[key]=value
+        
     def Layer(self,layer,mode="RO"):
         layer=self.__class__(layer).name #Support getting Docker names
         if self.build:
