@@ -609,7 +609,11 @@ class Container:
     def Delete(self):
         self.Stop()
         utils.shell_command(["sudo","rm","-rf",f"{utils.ROOT}/{self.name}"])
-    
+        
+        if 'auto-pune-experimental' in self.flags:
+            if 'no-prune' not in self.flags:
+                self.__class__(self.name.split('/')[0]).Prune()
+                
     def Watch(self):
         self.Class.watch()
 
