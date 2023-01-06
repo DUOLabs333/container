@@ -67,6 +67,7 @@ class Container:
         self.shell=_shell
         
         self.temp_layers=[]
+        self.docker_layers=[]
         
         self.hardlinks=[]
         
@@ -320,7 +321,11 @@ class Container:
         load_dependencies(self,utils.ROOT,layer)
         if [layer,mode] not in self.unionopts:
             self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
-            
+    
+    def DockerLayer(self,layer):
+        Layer(layer)
+        self.docker_layers.append(self.__class__(layer).name)  
+          
     def Base(self,base):
         if self.base:
             return #Prevent multiple bases
@@ -465,15 +470,23 @@ class Container:
                     while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
                          self.normalized_name=generate_random_string(7)
                     self.netns=f"{self.normalized_name}-netns"
+                    
                 if os.path.isfile("docker.json"):
-                    docker_layers, docker_commands=CompileDockerJson("docker.json")
+                    self.docker_layers.insert(0,self.name)
                 
-                #Set up layers first from docker_layer
-                utils.execute(self,'\n'.join(docker_layers))
-                #Run container-compose.py as an intermediary step
-                utils.execute(self,open("container-compose.py"))
+                first_run=False
                 
-                utils.execute(self,'\n'.join(docker_commands))
+                for name in self.docker_layers:
+                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
+                    #Set up layers first from docker_layer
+                    utils.execute(self,'\n'.join(docker_layers))
+                    
+                    if not first_run:
+                        #Run container-compose.py as an intermediary step
+                        utils.execute(self,open("container-compose.py"))
+                        first_run=True
+                
+                    utils.execute(self,'\n'.join(docker_commands))
                 
                 #Don't have to put Run() in container-compose.py just to start it
                 self.Run()
