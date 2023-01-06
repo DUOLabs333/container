@@ -309,7 +309,7 @@ class Container:
     def Namespace(self,key,value):
         self.namespaces[key]=value
         
-    def Layer(self,layer,mode="RO"):
+    def Layer(self,layer,mode="RO",run=False):
         layer=self.__class__(layer).name #Support getting Docker names
         if self.build:
             if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
@@ -321,10 +321,9 @@ class Container:
         load_dependencies(self,utils.ROOT,layer)
         if [layer,mode] not in self.unionopts:
             self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
-    
-    def DockerLayer(self,layer):
-        Layer(layer)
-        self.docker_layers.append(self.__class__(layer).name)  
+        
+        if run:
+            self.docker_layers.append(layer)
           
     def Base(self,base):
         if self.base:
