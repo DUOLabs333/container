@@ -67,7 +67,7 @@ class Container:
         self.shell=_shell
         
         self.temp_layers=[]
-        self.docker_layers=[]
+        self.run_layers=[]
         
         self.hardlinks=[]
         
@@ -323,7 +323,7 @@ class Container:
             self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
         
         if run:
-            self.docker_layers.append(layer)
+            self.run_layers.append(layer)
           
     def Base(self,base):
         if self.base:
@@ -471,13 +471,13 @@ class Container:
                     self.netns=f"{self.normalized_name}-netns"
                     
                 if os.path.isfile("docker.json"):
-                    self.docker_layers.insert(0,self.name)
+                    self.run_layers.insert(0,self.name)
                 
                 first_run=False
                 
-                for name in self.docker_layers:
+                for name in self.run_layers:
                     docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
-                    #Set up layers first from docker_layer
+                    #Set up layers first from docker_layers
                     utils.execute(self,'\n'.join(docker_layers))
                     
                     if not first_run:
@@ -486,7 +486,10 @@ class Container:
                         first_run=True
                 
                     utils.execute(self,'\n'.join(docker_commands))
-                
+                    
+                if len(self.run_layers)==0: #In the likely case that there are no run layers
+                    utils.execute(self,open("container-compose.py"))
+                    
                 #Don't have to put Run() in container-compose.py just to start it
                 self.Run()
                 self.Wait()
