@@ -627,6 +627,16 @@ class Container:
     def Delete(self):
         self.Stop()
         utils.shell_command(["sudo","rm","-rf",f"{utils.ROOT}/{self.name}"])
+        parent_dir=os.path.dirname(os.path.join(utils.ROOT,self.name))
+        
+        while parent_dir != utils.ROOT:
+            if os.path.exists(parent_dir) and len(os.listdir(parent_dir))==0:
+                os.rmdir(parent_dir)
+            else:
+                break
+            parent_dir=os.path.dirname(parent_dir)
+        
+        
         
         if 'auto-pune-experimental' in self.flags:
             if 'no-prune' not in self.flags:
