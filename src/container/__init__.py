@@ -630,6 +630,7 @@ class Container:
         
         if 'auto-pune-experimental' in self.flags:
             if 'no-prune' not in self.flags:
+                os.chdir(utils.ROOT) #Since the current directory doesn't exist anymore, which messes up utils.set_directory
                 self.__class__(self.name.split('/')[0]).Prune()
                 
     def Watch(self):
