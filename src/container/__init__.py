@@ -138,7 +138,10 @@ class Container:
         
         for port in self.ports:
             for proto in ["TCP","UDP"]:
-                for pid in list(map(int,[_ for _ in utils.shell_command(["lsof","-t","-i",f"{proto}@{port[0]}:{port[1]}"]).splitlines()])):
+                command=["lsof","-t","-i",f"{proto}@{port[0]}:{port[1]}"]
+                if proto=="TCP":
+                    command.append(f"-s{proto}:LISTEN")
+                for pid in list(map(int,[_ for _ in utils.shell_command(command).splitlines()])):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
 
         exit()
