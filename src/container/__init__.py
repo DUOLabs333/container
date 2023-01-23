@@ -474,24 +474,18 @@ class Container:
                     self.netns=f"{self.normalized_name}-netns"
                     
                 if os.path.isfile("docker.json"):
+                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
+                    
+                    utils.execute(self,'\n'.join(docker_layers))
                     self.run_layers.insert(0,self.name)
                 
-                first_run=False
+                utils.execute(self,open("container-compose.py"))
                 
                 for name in self.run_layers:
                     docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
-                    #Set up layers first from docker_layers
-                    utils.execute(self,'\n'.join(docker_layers))
                     
-                    if not first_run:
-                        #Run container-compose.py as an intermediary step
-                        utils.execute(self,open("container-compose.py"))
-                        first_run=True
-                
                     utils.execute(self,'\n'.join(docker_commands))
                     
-                if len(self.run_layers)==0: #In the likely case that there are no run layers
-                    utils.execute(self,open("container-compose.py"))
                     
                 #Don't have to put Run() in container-compose.py just to start it
                 self.Run()
