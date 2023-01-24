@@ -474,7 +474,7 @@ class Container:
                     self.netns=f"{self.normalized_name}-netns"
                     
                 if os.path.isfile("docker.json"):
-                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
+                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,self.name,"docker.json"))
                     
                     utils.execute(self,'\n'.join(docker_layers))
                     self.run_layers.insert(0,self.name)
