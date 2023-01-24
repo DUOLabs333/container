@@ -322,8 +322,8 @@ class Container:
                     #utils.shell_command(["container","build",layer])
                     self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
         load_dependencies(self,utils.ROOT,layer)
-        if [layer,mode] not in self.unionopts:
-            self.unionopts.insert(0,[layer,mode]) #Prevent multiple of the same layers
+        if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
+            self.unionopts.insert(0,[layer,mode])
         
         if run:
             self.run_layers.append(layer)
