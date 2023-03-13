@@ -73,8 +73,8 @@ def Import(uri,path,dockerfile=None):
     #Get token
     token=s.get(f"{auth_service}?service={registry_service}&scope=repository:{image}:pull").json()['token']
     s.headers['Authorization']=f"Bearer {token}"
-    s.headers["Accept"]="application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json"
-    
+    s.headers["Accept"]="application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json"
+
     manifest=s.get(f"https://{registry}/v2/{image}/manifests/{tag.replace('@','sha256:')}").json() #Digests must be prefixed with the hash algorithm used
     
     #Find the architecture 
@@ -110,7 +110,7 @@ def Import(uri,path,dockerfile=None):
                     digest=manifest['digest']
                     break
         manifest=s.get(f"https://{registry}/v2/{image}/manifests/{digest}").json()
-    
+
     
 
 
