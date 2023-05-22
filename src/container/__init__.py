@@ -225,6 +225,8 @@ class Container:
                 utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
                 #utils.shell_command(["echo"]+command,stdout=temp_f)
             #temp_f.close()
+            while not os.path.exists(f"/run/netns/{self.netns}"): #Wait until net namespace is up before running anything
+                pass
             os.makedirs("diff/etc",exist_ok=True)
             utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
 
