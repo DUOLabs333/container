@@ -25,7 +25,10 @@ def parse_uri(uri):
     if urllib.parse.urlparse(uri).netloc=='':
         uri='https://' + uri
     registry=urllib.parse.urlparse(uri).netloc
-
+    
+    if registry=="docker.io":
+        registry="index.docker.io"
+        
     image=urllib.parse.urlparse(uri).path
     
     if image.startswith('/'):
