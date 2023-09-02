@@ -13,8 +13,6 @@ from .misc import *
 
 import utils
 
-utils.GLOBALS=globals()
-
 SHELL_CWD=os.environ.get("PWD")
 
 def convert_colon_string_to_directory(string):
@@ -27,87 +25,47 @@ def convert_colon_string_to_directory(string):
         string=f"{utils.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
     string=os.path.expanduser(string)
     return string
-utils.get_all_items=get_all_items
+
 
 def generate_random_string(N):
     return ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(N)) 
 
-def is_jsonable(x):
-    try:
-        json.dumps(x)
-        return True
-    except (TypeError, OverflowError):
-        return False
-          
-class Container:
-    def __init__(self,_name,_flags={},_unionopts=None,_workdir='/',_env=None,_uid=None,_gid=None,_shell=None):
-        if 'temp' in _flags:
-            _name=generate_random_string(16) #Generate string for temp containers
+class Container(utils.Class):
+    def __init__(self,name,flags,**kwargs):
+    
+        if 'temp' in flags:
+            name=generate_random_string(16) #Generate string for temp containers
         
-        self.original_name=_name #For use in Init
-        if ":" in _name or 'pull' in _flags: #Is a container
-            _name='/'.join(parse_uri(_name))
+        self.original_name=name #For use in Init
+        if ":" in name or 'pull' in flags: #Is a container
+            name='/'.join(parse_uri(name))
         
-        self.Class = utils.Class(self,_name,_flags,_workdir)
-        self.unionopts=utils.get_value(_unionopts,[])
-        
-        self.env=utils.get_value(_env,["PATH=/bin:/usr/sbin:/sbin:/usr/bin","HOME=$(eval echo ~$(whoami))"])
-        
-        #Whether we mounted dev, proc, etc.
-        self.mounted_special=False
         
         self.namespaces={"user":str2bool(os.getenv("CONTAINER_USER_NAMESPACES","0")),"net":str2bool(os.getenv("CONTAINER_NET_NAMESPACES","0"))}
         
-        self.workdir=_workdir
         
+        self.uid=kwargs.get("uid",0 if self.namespaces['user'] else os.getuid())
+        self.gid=kwargs.get("gid",0 if self.namespaces['user'] else os.getgid())
         
-        self.uid=utils.get_value(_uid,0 if self.namespaces['user'] else os.getuid())
-        self.gid=utils.get_value(_gid,0 if self.namespaces['user'] else os.getgid())
-        
-        self.shell=_shell
+        self.workdir=kwargs.get("workdir","/")
+        self.shell=kwargs.get("shell",None)
+        self.unionopts=kwargs.get("unionopts",[])
+        self.env=kwargs.get("env",["PATH=/bin:/usr/sbin:/sbin:/usr/bin","HOME=$(eval echo ~$(whoami))"])
+        self.build=kwargs.get("build",False)
         
         self.temp_layers=[]
         self.run_layers=[]
-        
+        self.ports=[]
         self.hardlinks=[]
         
-        self.build=False
-        
         self.base=False
-        self.ports=[]
-    
         self.setup=False #Whether _setup was run once
-        
+        self.mounted_special=False #Whether we mounted dev, proc, etc.
                     
-        self._load() #Read from lock to initialize the same state
+        super().__init__(self,name,flags,kwargs)
         
         
-            
-        
-        
-    #Functions        
-    def _update(self,keys=None):
-        if self.build:
-            return #No lock file when building --- no need for it
-        if isinstance(keys,str):
-            keys=[keys]
-        
-        if not keys: #Just json it all
-            keys=[attr for attr in dir(self) if not callable(getattr(self, attr)) and not attr.startswith("__") and is_jsonable(getattr(self,attr)) and attr not in ['flags']]
-            
-        with open(self.lock,"r") as f:
-            data=json.load(f)
-            
-        for key in keys:
-            data[key]=getattr(self,key)
-        
-        with open(self.lock,"w+") as f:
-            json.dump(data,f)
-             
-    def _exit(self,a,b):
-        
-        self.Class.kill_auxiliary_processes()
-        
+    def _exit(self):
         #Unmount dev,proc, etc. if directory exists
         if os.path.isdir("merged"):
             for dir in os.listdir("merged"):
@@ -143,20 +101,11 @@ class Container:
                     command.append(f"-s{proto}:LISTEN")
                 for pid in list(map(int,[_ for _ in utils.shell_command(command).splitlines()])):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
-
-        exit()
-    
-    def _load(self):
-        if os.path.isfile(self.lock):
-            with open(self.lock,"r") as f:
-                data=json.load(f)
-            
-            for key in data:
-                setattr(self,key,data[key]) #Read variables from .lock and populate self with them as a bootstrap
     
     def _setup(self):
         if self.setup:
             return
+            
         if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
             self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
                   
@@ -248,16 +197,14 @@ class Container:
                                 self.maps.append('--map-groups=auto')
                             break #No need to continue looping
               
-        self._update()
+        self.update_lockfile()
         self.setup=True
-    def Ps(self,process=None):
-        if process=="main" or ("main" in self.flags):
-            return self.Class.get_main_process()
-        elif process=="auxiliary" or ("auxiliary" in self.flags):
-            if not os.path.isdir("merged"):
-                return []
-            processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
-            return list(map(int,processes))
+        
+    def get_auxiliary_processes(self):
+        if not os.path.isdir("merged"):
+            return []
+        processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
+        return list(map(int,processes))
     
     def Mount(self,IN,OUT):
         IN=convert_colon_string_to_directory(IN)
@@ -304,30 +251,29 @@ class Container:
             os.makedirs(os.path.dirname(dest),exist_ok=True)
             utils.shell_command(["cp","-a",f"{src}",f"{dest}"])
 
-    def Loop(self,*args, **kwargs):
-        self.Class.loop(*args, **kwargs)
-        #Run(f'(while true; do "{command}"; sleep {delay}; done)')
-        
-    def Wait(self,*args, **kwargs):
-        utils.wait(*args, **kwargs)
-    
+ 
     def Namespace(self,key,value):
         self.namespaces[key]=value
         
     def Layer(self,layer,mode="RO",run=False):
-        layer=self.__class__(layer).name #Support getting Docker names
         if self.build:
-            if len(os.listdir(os.path.join(utils.ROOT,layer,"diff")))<2:
-                if os.path.exists(os.path.join(utils.ROOT,layer,"Containerfile.py")): #Only Build if there is a Containerfile.py
-                    #Build layer if it doesn't exist
-                    self.__class__(layer).Build()
-                    #utils.shell_command(["container","build",layer])
-                    self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-        load_dependencies(self,utils.ROOT,layer)
+            layer=self.__class__(layer,{},build=True)
+            if len(os.listdir(os.path.join(utils.ROOT,layer.name,"diff")))<2: #Nothing in diff, so we should build layer
+                if os.path.exists(os.path.join(utils.ROOT,layer.name,"Containerfile.py")): #Only Build if there is a Containerfile.py
+                    layer.Build()
+                    self.temp_layers.append(layer.name) #Layer wasn't needed before so we can delete it after
+       
+        layer=self.__class__(layer,{},parsing=True)
+        layer.Start()            
+        
+        for layer in self.parsed_config:
+            if layer[0] in ["Layer","Base","Env","Shell"]:
+                gettr(self,layer[0])(*layer[1],**layer[2])
+                
         if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
             self.unionopts.insert(0,[layer,mode])
         
-        if run:
+        if run: #Runnable layers
             self.run_layers.append(layer)
           
     def Base(self,base):
@@ -338,13 +284,8 @@ class Container:
         return self.Layer(base)
         
     def Workdir(self,*args, **kwargs):
-        self.Class.workdir(*args, **kwargs)
+        super().Workdir(*args, **kwargs)
         os.makedirs(f"diff{self.workdir}",exist_ok=True)
-        self._update("workdir")
-    
-    def Env(self,var):
-        self.env.append(var)
-        self._update("env")
     
     def User(self,user=""):
         if user=="":
@@ -365,11 +306,9 @@ class Container:
             else:
                 self.gid=int(self.Run(f"id -g {user[1]}",pipe=True))
                 #self.gid=pwd.getpwnam(user[1])[2]
-        self._update(["uid","gid"])
     
     def Shell(self,shell):
         self.shell=shell
-        self._update("shell")        
     
     def Volume(self,name,path):
         name=utils.split_string_by_char(name,char=":")
@@ -423,29 +362,10 @@ class Container:
                utils.shell_command(["socat", f"{proto}-l:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"{proto}:{_from[0]}:{_from[1]}"], stdout=subprocess.DEVNULL,block=False)
         self.ports.append(_to)
         
-    def Run(self,command="",pipe=False):
-        
-        self._setup()
-        if self.build:
-            if command.strip()!="":
-                print(f"Command: {command}")
-        
-        with open(self.log,"a+") as log_file:
-            log_file.write(f"Command: {command}\n")
-            log_file.flush()
-            
-            #Pipe output to variable
-            if pipe:
-                stdout=subprocess.PIPE
-                stderr=subprocess.DEVNULL
-            #Print output to file
-            else:
-                stdout=log_file
-                stderr=subprocess.STDOUT
-            
-            return utils.shell_command(chroot_command(self,command),stdout=stdout,stderr=stderr,stdin=subprocess.DEVNULL)
+    def Run(self,command="",**kwargs):
+        command=chroot_command(self,command)
+        super().Run(self,command,**kwargs)
     
-            
     #Commands      
     def Start(self):
         if "Started" in self.Status():
