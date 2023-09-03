@@ -54,9 +54,10 @@ class Container(utils.Class):
         self.build=kwargs.get("build",False)
         
         self.temp_layers=[]
-        self.run_layers=[]
+        self.run_layers_commands=[]
         self.ports=[]
         self.hardlinks=[]
+        self.config=[]
         
         self.base=False
         self.setup=False #Whether _setup was run once
@@ -102,10 +103,7 @@ class Container(utils.Class):
                 for pid in list(map(int,[_ for _ in utils.shell_command(command).splitlines()])):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
     
-    def _setup(self):
-        if self.setup:
-            return
-            
+    def _setup(self):            
         if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
             self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
                   
@@ -122,6 +120,7 @@ class Container(utils.Class):
                 if os.path.islink(f"merged/bin/{shell}") or os.path.isfile(f"merged/bin/{shell}"): #Handle broken symlinks
                     self.Shell(f"/bin/{shell}")
                     break
+                    
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc"]:
@@ -140,7 +139,16 @@ class Container(utils.Class):
             self.mounted_special=True
             
         if self.namespaces['net']: #Start network namespace
-            self.veth_pair={"netns":{"name":f"{self.normalized_name}-veth0"},"host":{"name":f"{self.normalized_name}-veth1"}}
+            
+            netns_name=generate_random_string(7)
+            if shutil.which("ip"): #Otherwise, it wouldn't matter
+                while True:
+                    netns_name=generate_random_string(7)
+                    self.netns=f"{netns_name}-netns"
+                    if self.netns not in utils.shell_command(["ip","netns","list"]).splitlines():
+                        break
+                
+            self.veth_pair={"netns":{"name":f"{netns_name}-veth0"},"host":{"name":f"{netns_name}-veth1"}}
             
             while True:
                 cidr=[random.randint(0,255),random.randint(0,255)]
@@ -181,6 +189,7 @@ class Container(utils.Class):
 
             os.makedirs("diff/tmp",exist_ok=True)
             os.chmod('diff/tmp',0o0777)
+            
         #Check whether you can map users and/or groups
         self.maps=[]
         username=os.environ['USER']
@@ -200,6 +209,10 @@ class Container(utils.Class):
         self.update_lockfile()
         self.setup=True
         
+        for command in self.run_layers_commands:
+            utils.execute(command) #Runnable layer's commands should be run before any other command, even though the setup is done (setup must be set to true because <command> will have self.Run, so it will spiral into an infinite loop otherwise)
+            
+            
     def get_auxiliary_processes(self):
         if not os.path.isdir("merged"):
             return []
@@ -260,21 +273,21 @@ class Container(utils.Class):
             layer=self.__class__(layer,{},build=True)
             if len(os.listdir(os.path.join(utils.ROOT,layer.name,"diff")))<2: #Nothing in diff, so we should build layer
                 if os.path.exists(os.path.join(utils.ROOT,layer.name,"Containerfile.py")): #Only Build if there is a Containerfile.py
-                    layer.Build()
-                    self.temp_layers.append(layer.name) #Layer wasn't needed before so we can delete it after
+                    layer.Build() #Maybe just make Build a link to Start, but just using Containerfile?
+                    self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
        
         layer=self.__class__(layer,{},parsing=True)
         layer.Start()            
         
         for layer in self.parsed_config:
             if layer[0] in ["Layer","Base","Env","Shell"]:
-                gettr(self,layer[0])(*layer[1],**layer[2])
+                getattr(self,layer[0])(*layer[1],**layer[2])
+            elif layer[0] not in self.attributes: #Don't want to add just anything from the config
+                if run:
+                    self.run_commands.append(layer[0]) #These are the commands of the layer (in a parsed_config, the last element is just the rest of the commands in a big string)
                 
         if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
             self.unionopts.insert(0,[layer,mode])
-        
-        if run: #Runnable layers
-            self.run_layers.append(layer)
           
     def Base(self,base):
         if self.base:
@@ -368,52 +381,17 @@ class Container(utils.Class):
     
     #Commands      
     def Start(self):
-        if "Started" in self.Status():
-            return f"Container {self.name} is already started"
         
+        docker_layers=[]
+        docker_commands=[]
+        if os.path.isfile("docker.json"):
+            docker_layers, docker_commands=CompileDockerJson("docker.json")
+            
+        self.config.extend(docker_layers)
+        self.config.append(open("container-compose.py").read())
+        self.config.extend(docker_commands)
         
-        if os.fork()==0:
-            if os.fork()==0: #Double fork
-                #If child, run code, then exit 
-                with open(self.log,"a+") as f:
-                    pass
-                #Open a lock file so I can find it with lsof later
-                lock_file=open(self.lock,"w+")
-                
-                with open(self.lock,"w+") as f:
-                    json.dump({},f)
-                
-                self._update(["env","workdir", "uid","gid","shell"])
-                signal.signal(signal.SIGTERM,self._exit)
-                
-                docker_layers=[]
-                docker_commands=[]
-                
-                self.normalized_name=generate_random_string(7)
-                if shutil.which("ip"): #Otherwise, it wouldn't matter
-                    while self.normalized_name+"-netns" in utils.shell_command(["ip","netns","list"]).splitlines():
-                         self.normalized_name=generate_random_string(7)
-                    self.netns=f"{self.normalized_name}-netns"
-                    
-                if os.path.isfile("docker.json"):
-                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,self.name,"docker.json"))
-                    
-                    utils.execute(self,'\n'.join(docker_layers))
-                    self.run_layers.insert(0,self.name)
-                
-                utils.execute(self,open("container-compose.py"))
-                
-                for name in self.run_layers:
-                    docker_layers, docker_commands=CompileDockerJson(os.path.join(utils.ROOT,name,"docker.json"))
-                    
-                    utils.execute(self,'\n'.join(docker_commands))
-                    
-                    
-                #Don't have to put Run() in container-compose.py just to start it
-                self.Run()
-                self.Wait()
-                exit()
-            exit()
+        super().Start()
         
     def Build(self):
         self.Stop()

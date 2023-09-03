@@ -53,6 +53,7 @@ def remove_empty_folders_in_diff():
         if not path.startswith("diff/.unionfs"):
             if len(os.listdir(path)) == 0:
                 os.rmdir(path)
+                
 def get_all_items(root):
     #Implement Depth-First Search through utils.ROOT
     items=[]
