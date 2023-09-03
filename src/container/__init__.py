@@ -22,7 +22,7 @@ def convert_colon_string_to_directory(string):
     elif len(string)==1:
         string=string[0] # No container was specified, so assume "root"
     else:
-        string=f"{utils.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
+        string=f"{self.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
     string=os.path.expanduser(string)
     return string
 
@@ -80,7 +80,7 @@ class Container(utils.Class):
                         utils.shell_command(["umount",f"merged/{dir}"])
                     
         
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{utils.ROOT}/{self.name}/diff" in _]
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{self.ROOT}/{self.name}/diff" in _]
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
@@ -109,7 +109,7 @@ class Container(utils.Class):
                   
             temp=[]
             for _ in self.unionopts:
-                temp.append(f"{utils.ROOT}/{_[0]}/diff={_[1]}")
+                temp.append(f"{self.ROOT}/{_[0]}/diff={_[1]}")
             self.unionopts=":".join(temp)
             
         #Prevent merged from being mounted multiple times
@@ -209,8 +209,12 @@ class Container(utils.Class):
         self.update_lockfile()
         self.setup=True
         
+        run_layer_environment={}
+        for command in ["Layer","Base","Env","Shell"]:
+            run_layer_environment[command]=lambda *args, **kwargs : None
+            
         for command in self.run_layers_commands:
-            utils.execute(command) #Runnable layer's commands should be run before any other command, even though the setup is done (setup must be set to true because <command> will have self.Run, so it will spiral into an infinite loop otherwise)
+            self._exec(command,run_layer_environment) #Runnable layer's commands should be run before any other command, even though the setup is done (setup must be set to true because <command> will have self.Run, so it will spiral into an infinite loop otherwise)
             
             
     def get_auxiliary_processes(self):
@@ -271,20 +275,40 @@ class Container(utils.Class):
     def Layer(self,layer,mode="RO",run=False):
         if self.build:
             layer=self.__class__(layer,{},build=True)
-            if len(os.listdir(os.path.join(utils.ROOT,layer.name,"diff")))<2: #Nothing in diff, so we should build layer
-                if os.path.exists(os.path.join(utils.ROOT,layer.name,"Containerfile.py")): #Only Build if there is a Containerfile.py
+            if len(os.listdir(os.path.join(self.ROOT,layer.name,"diff")))<2: #Nothing in diff, so we should build layer
+                if os.path.exists(os.path.join(self.ROOT,layer.name,"Containerfile.py")): #Only Build if there is a Containerfile.py
                     layer.Build() #Maybe just make Build a link to Start, but just using Containerfile?
                     self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
-       
-        layer=self.__class__(layer,{},parsing=True)
-        layer.Start()            
         
-        for layer in self.parsed_config:
-            if layer[0] in ["Layer","Base","Env","Shell"]:
-                getattr(self,layer[0])(*layer[1],**layer[2])
-            elif layer[0] not in self.attributes: #Don't want to add just anything from the config
-                if run:
-                    self.run_commands.append(layer[0]) #These are the commands of the layer (in a parsed_config, the last element is just the rest of the commands in a big string)
+        
+        parsed_config=[]
+        
+        parsing_environment={}
+        
+        #parsing_environment["parsed_config"]=parsed_config
+        
+        for attr in self.attributes:
+            if not(attr[0].isupper() and callable(getattr(self,attr))):
+                continue
+            if attr in ["Layer","Base","Env","Shell"]:
+                def func(*args,**kwargs):
+                    parsed_config.append([attr,args,kwargs])
+            else:
+                def func(*args,**kwargs):
+                    pass
+            parsing_environment[attr]=func
+        
+        layer=self.__class__(layer,{},parsing=True)
+        layer.Start()
+        layer._exec(layer.config,parsing_environment)
+            
+        for command in parsed_config:
+            getattr(self,command[0])(*command[1],**command[2])
+        
+        if run:
+            self.run_layers_commands.append(layer.config)
+                     
+        #Should add method _parse, that allows you to parse for specific functions. However, how do I get it to ignore those commands when calling a specific source (don't need to, just need an _exec function that has a string option and environment to override, then run run_layers_commands string with that
                 
         if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
             self.unionopts.insert(0,[layer,mode])
@@ -329,7 +353,7 @@ class Container(utils.Class):
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
-        volume_path=f"{utils.ROOT}/{name[0]}/Volumes/{name[1]}"
+        volume_path=f"{self.ROOT}/{name[0]}/Volumes/{name[1]}"
         
         self.Mount(volume_path,path)
         
@@ -449,7 +473,7 @@ class Container(utils.Class):
             return [self.Stop()]
     
     def Prune(self):
-        root=os.path.join(utils.ROOT,self.name)
+        root=os.path.join(self.ROOT,self.name)
         containers=get_all_items(root)
         layers={'container':[],"folder":[]}
         for _ in containers:
@@ -477,12 +501,12 @@ class Container(utils.Class):
         
         if "pull" in self.flags:
             
-            Import(self.original_name,utils.ROOT)
+            Import(self.original_name,self.ROOT)
             
             if "dockerfile" in self.flags:
-                Convert(self.flags["dockerfile"],os.path.join(utils.ROOT,self.name))
-        os.makedirs(f"{utils.ROOT}/{self.name}",exist_ok=True)
-        os.chdir(f"{utils.ROOT}/{self.name}")
+                Convert(self.flags["dockerfile"],os.path.join(self.ROOT,self.name))
+        os.makedirs(f"{self.ROOT}/{self.name}",exist_ok=True)
+        os.chdir(f"{self.ROOT}/{self.name}")
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
         
@@ -499,14 +523,14 @@ class Container(utils.Class):
         if 'no-edit' not in self.flags:
             self.Edit()
             
-        if utils.check_if_element_any_is_in_list(['only-chroot','and-chroot'],self.flags):
+        if utils.check_if_any_element_is_in_list(['only-chroot','and-chroot'],self.flags):
             return [self.Start(),self.Delete() if 'temp' in self.flags else None]
 
     def Edit(self):
         if 'build' in self.flags:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/Containerfile.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/Containerfile.py"],stdout=None)
         else:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{utils.ROOT}/{self.name}/container-compose.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/container-compose.py"],stdout=None)
 
     def Status(self):
         return self.Class.status()
@@ -520,10 +544,10 @@ class Container(utils.Class):
     
     def Delete(self):
         self.Stop()
-        utils.shell_command(["sudo","rm","-rf",f"{utils.ROOT}/{self.name}"])
-        parent_dir=os.path.dirname(os.path.join(utils.ROOT,self.name))
+        utils.shell_command(["sudo","rm","-rf",f"{self.ROOT}/{self.name}"])
+        parent_dir=os.path.dirname(os.path.join(self.ROOT,self.name))
         
-        while parent_dir != utils.ROOT:
+        while parent_dir != self.ROOT:
             if os.path.exists(parent_dir) and len(os.listdir(parent_dir))==0:
                 os.rmdir(parent_dir)
             else:
@@ -534,16 +558,10 @@ class Container(utils.Class):
         
         if 'auto-pune-experimental' in self.flags:
             if 'no-prune' not in self.flags:
-                os.chdir(utils.ROOT) #Since the current directory doesn't exist anymore, which messes up utils.set_directory
+                os.chdir(self.ROOT) #Since the current directory doesn't exist anymore, which messes up utils.set_directory
                 self.__class__(self.name.split('/')[0]).Prune()
                 
-    def Watch(self):
-        self.Class.watch()
 
-utils.CLASS=Container
-
-utils.ROOT=utils.get_root_directory()  
-   
 def main():
     NAMES,FLAGS,FUNCTION=utils.extract_arguments()
     for name in utils.list_items_in_root(NAMES, FLAGS):
