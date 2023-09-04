@@ -13,22 +13,8 @@ from .misc import *
 
 import utils
 
-SHELL_CWD=os.environ.get("PWD")
-
-def convert_colon_string_to_directory(string):
-    string=utils.split_string_by_char(string,char=":")
-    if string[0]=="root":
-        string=string[1] #The directory is just the absolute path in the host
-    elif len(string)==1:
-        string=string[0] # No container was specified, so assume "root"
-    else:
-        string=f"{self.ROOT}/{string[0]}/diff{string[1]}" # Container was specified, so use it
-    string=os.path.expanduser(string)
-    return string
-
-
-def generate_random_string(N):
-    return ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(N)) 
+class ParsingFinished(Exception):
+    pass
 
 class Container(utils.Class):
     def __init__(self,name,flags,**kwargs):
@@ -43,6 +29,7 @@ class Container(utils.Class):
         
         self.namespaces={"user":str2bool(os.getenv("CONTAINER_USER_NAMESPACES","0")),"net":str2bool(os.getenv("CONTAINER_NET_NAMESPACES","0"))}
         
+        self.SHELL_CWD=os.environ.get("PWD")
         
         self.uid=kwargs.get("uid",0 if self.namespaces['user'] else os.getuid())
         self.gid=kwargs.get("gid",0 if self.namespaces['user'] else os.getgid())
@@ -223,8 +210,14 @@ class Container(utils.Class):
         processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
         return list(map(int,processes))
     
+    @classmethod
+    def get_all_items(cls):
+        return get_all_items(cls._getroot())
+    
+    convert_colon_string_to_directory=convert_colon_string_to_directory
+            
     def Mount(self,IN,OUT):
-        IN=convert_colon_string_to_directory(IN)
+        IN=self.convert_colon_string_to_directory(IN)
         if os.path.isdir(IN):
             try:
                 os.makedirs(f"diff{OUT}",exist_ok=True)
@@ -251,10 +244,10 @@ class Container(utils.Class):
         else:
             dest=f"diff{dest}"
         
-        src=convert_colon_string_to_directory(src)
+        src=self.convert_colon_string_to_directory(src)
         #Relative directory
         if not src.startswith("/"):
-            src=f"{SHELL_CWD}/{src}"
+            src=f"{self.SHELL_CWD}/{src}"
             
         #Remove trailing slashes, in order to prevent gotchas with cp
         if src.endswith("/"):
@@ -290,25 +283,30 @@ class Container(utils.Class):
         for attr in self.attributes:
             if not(attr[0].isupper() and callable(getattr(self,attr))):
                 continue
-            if attr in ["Layer","Base","Env","Shell"]:
-                def func(*args,**kwargs):
+            def func(attr=attr.copy(),*args,**kwargs):
+                if attr in ["Layer","Base","Env","Shell"]:
                     parsed_config.append([attr,args,kwargs])
-            else:
-                def func(*args,**kwargs):
+                else:
+                    if attr=="Run": #No need to do anything else
+                        raise ParsingFinished
                     pass
+                   
             parsing_environment[attr]=func
         
-        layer=self.__class__(layer,{},parsing=True)
-        layer.Start()
-        layer._exec(layer.config,parsing_environment)
+        layer=self.__class__(layer,{})
+        
+        try:
+            layer._exec(layer._get_config(),parsing_environment)
+        except ParsingFinished:
+            pass
             
         for command in parsed_config:
             getattr(self,command[0])(*command[1],**command[2])
         
-        if run:
+        if run: #Put the entire config in list, but only run what hasn't been parsed
             self.run_layers_commands.append(layer.config)
                      
-        #Should add method _parse, that allows you to parse for specific functions. However, how do I get it to ignore those commands when calling a specific source (don't need to, just need an _exec function that has a string option and environment to override, then run run_layers_commands string with that
+        #Add method _parse that allows you to parse for specific functions?
                 
         if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
             self.unionopts.insert(0,[layer,mode])
@@ -404,7 +402,7 @@ class Container(utils.Class):
         super().Run(self,command,**kwargs)
     
     #Commands      
-    def Start(self):
+    def command_Start(self):
         
         docker_layers=[]
         docker_commands=[]
@@ -417,13 +415,13 @@ class Container(utils.Class):
         
         super().Start()
         
-    def Build(self):
+    def command_Build(self):
         self.Stop()
-        self.build=True
-        self.namespaces['net']=False #Don't enable it when building, as it just gets messy
-        signal.signal(signal.SIGTERM,self._exit)
-        signal.signal(signal.SIGINT,self._exit)
+        self.fork=False #Build runs synchronously
         
+        self.namespaces['net']=False #Don't enable it when building, as it just gets messy
+        
+        self._get_config=lambda *args, **kwargs: s[
         utils.execute(self,open("Containerfile.py"))
 
         self.Stop()
@@ -434,14 +432,7 @@ class Container(utils.Class):
             #utils.shell_command(["container","clean",layer])
         self._exit(1,2)
         
-       
-    def Stop(self):
-        return [self.Class.stop()]
-
-    def Restart(self):
-        return self.Class.restart()
-    
-    def Chroot(self):
+    def command_Chroot(self):
 
         if "Stopped" in self.Status():
             stopped=True
@@ -472,7 +463,7 @@ class Container(utils.Class):
         if "and-stop" in self.flags:
             return [self.Stop()]
     
-    def Prune(self):
+    def command_Prune(self):
         root=os.path.join(self.ROOT,self.name)
         containers=get_all_items(root)
         layers={'container':[],"folder":[]}
@@ -494,10 +485,10 @@ class Container(utils.Class):
         for _ in difference:
             self.__class__(_).Delete()
             
-    def List(self):
+    def command_List(self):
         return self.Class.list()
 
-    def Init(self):
+    def command_Init(self):
         
         if "pull" in self.flags:
             
@@ -526,23 +517,17 @@ class Container(utils.Class):
         if utils.check_if_any_element_is_in_list(['only-chroot','and-chroot'],self.flags):
             return [self.Start(),self.Delete() if 'temp' in self.flags else None]
 
-    def Edit(self):
+    def command_Edit(self):
         if 'build' in self.flags:
             utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/Containerfile.py"],stdout=None)
         else:
             utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/container-compose.py"],stdout=None)
-
-    def Status(self):
-        return self.Class.status()
-
-    def Log(self):
-        self.Class.log()
     
-    def Clean(self):
+    def command_Clean(self):
         self.Stop()
         os.system(f"sudo rm -rf diff/*")
     
-    def Delete(self):
+    def command_Delete(self): #Probably move into the parent implementation
         self.Stop()
         utils.shell_command(["sudo","rm","-rf",f"{self.ROOT}/{self.name}"])
         parent_dir=os.path.dirname(os.path.join(self.ROOT,self.name))
@@ -563,12 +548,7 @@ class Container(utils.Class):
                 
 
 def main():
-    NAMES,FLAGS,FUNCTION=utils.extract_arguments()
-    for name in utils.list_items_in_root(NAMES, FLAGS):
-        item=utils.CLASS(name,FLAGS)
-        result=utils.execute_class_method(item,FUNCTION)
-        
-        utils.print_list(result)
+    utils.parse_and_call_and_return(Container)
         
 
     
