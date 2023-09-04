@@ -39,7 +39,8 @@ class Container(utils.Class):
         
         self.temp_layers=[]
         self.run_layers_commands=[]
-        self.ports=[]
+        self.open_ports=[]
+        self.ports={}
         self.hardlinks=[]
         
         self.base=False
@@ -78,7 +79,7 @@ class Container(utils.Class):
         if self.namespaces['net']:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
         
-        for port in self.ports:
+        for port in self.open_ports:
             for proto in ["TCP","UDP"]:
                 command=["lsof","-t","-i",f"{proto}@{port[0]}:{port[1]}"]
                 if proto=="TCP":
@@ -92,7 +93,7 @@ class Container(utils.Class):
                   
             temp=[]
             for _ in self.unionopts:
-                temp.append(os.path.join(self.ROOT,utils.name_to_filename(_[0]),diff)+"="+_[1])
+                temp.append(os.path.join(self.ROOT,utils.name_to_filename(_[0]),"diff")+"="+_[1])
                 
             self.unionopts=":".join(temp)
             
@@ -124,7 +125,6 @@ class Container(utils.Class):
             self.mounted_special=True
             
         if self.namespaces['net']: #Start network namespace
-            
             netns_name=generate_random_string(7)
             if shutil.which("ip"): #Otherwise, it wouldn't matter
                 while True:
@@ -144,7 +144,7 @@ class Container(utils.Class):
                     self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
                     break
             
-            internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,arbitrary=True).strip()
+            internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,shell=True).strip()
             commands=[
                 ['ip', 'netns', 'add', self.netns],
                 ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
@@ -168,12 +168,23 @@ class Container(utils.Class):
                     while not os.path.exists(f"/run/netns/{self.netns}"): #Wait until net namespace is up before running anything
                         pass
                 utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
+        
+        for _from, _to in self.ports.items():
+            for proto in ["tcp","udp"]:
+                if self.namespaces['net']:
+                    sock_name=os.path.join(self.tempdir,f"{proto}-{':'.join(_to)}.sock")
+                    utils.shell_command(["socat", f"{proto}-listen:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:{_from[0]}:{_from[1]}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
+                    #utils.shell_command(["sudo","ip","netns","exec",self.netns,"socat",f"UNIX-LISTEN:{sock_name},fork",f"{proto}-connect:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
+                    #utils.shell_command(["sudo","socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
+                else:
+                   utils.shell_command(["socat", f"{proto}-l:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"{proto}:{_from[0]}:{_from[1]}"], stdout=subprocess.DEVNULL,block=False)
+            self.open_ports.append(_to)
             
-            os.makedirs(os.path.join("diff","etc"),exist_ok=True)
-            utils.shell_command(["sudo","ln","-f", os.path.join(os.sep,"etc","resolv.conf"),os.path.join("diff","etc","resolv.conf")])
+        os.makedirs(os.path.join("diff","etc"),exist_ok=True)
+        utils.shell_command(["sudo","ln","-f", os.path.join(os.sep,"etc","resolv.conf"),os.path.join("diff","etc","resolv.conf")])
 
-            os.makedirs("diff/tmp",exist_ok=True)
-            os.chmod('diff/tmp',0o0777)
+        os.makedirs("diff/tmp",exist_ok=True)
+        os.chmod('diff/tmp',0o0777)
             
         #Check whether you can map users and/or groups
         self.maps=[]
@@ -293,7 +304,7 @@ class Container(utils.Class):
         for attr in self.attributes:
             if not(attr[0].isupper() and callable(getattr(self,attr))):
                 continue
-            def func(attr=attr.copy(),*args,**kwargs):
+            def func(attr=attr,*args,**kwargs):
                 if attr in ["Layer","Base","Env","Shell"]:
                     parsed_config.append([attr,args,kwargs])
                 else:
@@ -319,7 +330,7 @@ class Container(utils.Class):
         #Add method _parse that allows you to parse for specific functions?
                 
         if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
-            self.unionopts.insert(0,[layer,mode])
+            self.unionopts.insert(0,[layer.name,mode])
           
     def Base(self,base):
         if self.base:
@@ -391,27 +402,25 @@ class Container(utils.Class):
         if is_port_in_use(_to): #Port is in use, so leave
             return 
             
-        if _to in self.ports:
+        if _to in self.open_ports:
             return
         
         if not self.namespaces['net']:
             if _from==_to:
                 return #If the source and destination are the same, don't socat it, since it will take up the port.
-        for proto in ["tcp","udp"]:
-            if self.namespaces['net']:
-                sock_name=os.path.join(self.temp,f"{proto}-{':'.join(_to)}.sock")
-                utils.shell_command(["socat", f"{proto}-listen:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"""exec:'sudo ip netns exec {self.netns} socat STDIO "{proto}-connect:{_from[0]}:{_from[1]}"',nofork"""], stdout=subprocess.DEVNULL,block=False)
-                #utils.shell_command(["sudo","ip","netns","exec",self.netns,"socat",f"UNIX-LISTEN:{sock_name},fork",f"{proto}-connect:127.0.0.1:{_from}"], stdout=subprocess.DEVNULL,block=False)
-                #utils.shell_command(["sudo","socat",f"{proto}-listen:{_to},fork,reuseaddr,bind=127.0.0.1",f"UNIX-CONNECT:{sock_name}"],stdout=subprocess.DEVNULL,block=False)
-            else:
-               utils.shell_command(["socat", f"{proto}-l:{_to[1]},fork,reuseaddr,bind={_to[0]}", f"{proto}:{_from[0]}:{_from[1]}"], stdout=subprocess.DEVNULL,block=False)
-        self.ports.append(_to)
+        self.ports[tuple(_from)]=_to
         
     def Run(self,command="",**kwargs):
-        command=chroot_command(self,command)
-        super().Run(self,command,**kwargs)
+        command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
+        
+        super().Run(command_wrapper,**kwargs)
     
     #Commands
+    
+    def command_Start(self,*args,**kwargs):
+        
+        super().command_Start(*args,**kwargs)
+        
     def command_Build(self):
         self.Stop()
         self.fork=False #Build runs synchronously
@@ -426,7 +435,7 @@ class Container(utils.Class):
         for layer in self.temp_layers:
             self.__class__(layer).Clean()  #Clean layer if it was temporary
             #utils.shell_command(["container","clean",layer])
-        
+
     def command_Chroot(self):
         if "Stopped" in self.Status():
             stopped=True
