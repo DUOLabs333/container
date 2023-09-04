@@ -2,11 +2,8 @@
 import subprocess
 import sys
 import os
-import ast
 import json
-import signal
 import shutil
-import random, string
 
 from .docker import *
 from .misc import *
@@ -48,7 +45,7 @@ class Container(utils.Class):
         self.base=False
         self.mounted_special=False #Whether we mounted dev, proc, etc.
                     
-        super().__init__(self,name,flags,kwargs)
+        super().__init__(name,flags,kwargs)
         
         
     def _exit(self):
@@ -95,7 +92,7 @@ class Container(utils.Class):
                   
             temp=[]
             for _ in self.unionopts:
-                temp.append(os.path.join(self.ROOT,name_to_filename(_[0]),diff)+"="+_[1])
+                temp.append(os.path.join(self.ROOT,utils.name_to_filename(_[0]),diff)+"="+_[1])
                 
             self.unionopts=":".join(temp)
             
@@ -226,7 +223,7 @@ class Container(utils.Class):
     
     @classmethod
     def get_all_items(cls):
-        return [filename_to_name(_) for _ in get_all_items(cls._getroot())]
+        return [utils.filename_to_name(_) for _ in get_all_items(cls._get_root())]
     
             
     def Mount(self,IN,OUT):
@@ -364,7 +361,7 @@ class Container(utils.Class):
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
-        volume_path=os.path.join(self.ROOT,name_to_filename(name[0]),"Volumes",name_to_filename(names[1]))
+        volume_path=os.path.join(self.ROOT,self.name_to_filename(name[0]),"Volumes",self.name_to_filename(names[1]))
         
         self.Mount(volume_path,path)
         
@@ -481,9 +478,6 @@ class Container(utils.Class):
         
         for _ in difference:
             self.__class__(_).Delete()
-            
-    def command_List(self):
-        return self.List()
 
     def command_Init(self):
         if "pull" in self.flags:

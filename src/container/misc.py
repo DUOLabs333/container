@@ -1,26 +1,10 @@
-import os, ast, getpass, sys, socket
+import os, getpass, sys, socket
+import random, string
 
 import utils
 
 from .docker import CompileDockerJson
 #Helper functions  
-def load_dependencies(self,root,layer):
-    if not os.path.isfile(os.path.join(root,layer,"container-compose.py")):
-        return #Don't error out if container-compose.py doesn't exist
-    
-    with open(os.path.join(root,layer,"container-compose.py")) as fh:
-        file=fh.read() 
-        
-    if os.path.isfile(os.path.join(root,layer,"docker.json")):
-        docker_layers, docker_commands =CompileDockerJson(os.path.join(root,layer,"docker.json"))
-        file="\n".join(docker_layers+file.splitlines()+docker_commands)
-      
-    for node in ast.iter_child_nodes(ast.parse(file)):
-       if isinstance(node, ast.Expr) and isinstance(node.value,ast.Call):
-           function=node.value.func.id
-           if function in ["Layer","Base","Env","Shell"]:
-               arguments=[eval(ast.unparse(val)) for val in node.value.args]
-               getattr(self,function)(*arguments) #Run function
 
 def chroot_command(self,command):
     if self.namespaces['user']:
