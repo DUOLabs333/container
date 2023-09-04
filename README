@@ -7,7 +7,7 @@ To start,
 4. Run "container init $CONTAINER" and edit the container-compose.py with the commands to start
 5. Once you have prepared your image, run "container start $CONTAINER"
 
-To build use the provided build.sh script
+To build, run `mod`
 
 
 ====================Docs=======================

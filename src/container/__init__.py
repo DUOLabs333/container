@@ -44,10 +44,8 @@ class Container(utils.Class):
         self.run_layers_commands=[]
         self.ports=[]
         self.hardlinks=[]
-        self.config=[]
         
         self.base=False
-        self.setup=False #Whether _setup was run once
         self.mounted_special=False #Whether we mounted dev, proc, etc.
                     
         super().__init__(self,name,flags,kwargs)
@@ -57,17 +55,18 @@ class Container(utils.Class):
         #Unmount dev,proc, etc. if directory exists
         if os.path.isdir("merged"):
             for dir in os.listdir("merged"):
-                if os.path.ismount(f"merged/{dir}"):
+                dir=os.path.join("merged",dir)
+                if os.path.ismount(dir):
                     if sys.platform=='linux':
-                        utils.shell_command(["sudo","mount","--make-rslave",f"merged/{dir}"])
-                        utils.shell_command(["sudo","umount","-R","-l",f"merged/{dir}"])
+                        utils.shell_command(["sudo","mount","--make-rslave",dir])
+                        utils.shell_command(["sudo","umount","-R","-l",dir])
                     elif sys.platform=='darwin':
-                        utils.shell_command(["sudo","umount",f"merged/{dir}"])
+                        utils.shell_command(["sudo","umount",dir])
                     elif sys.platform=='cygwin':
-                        utils.shell_command(["umount",f"merged/{dir}"])
+                        utils.shell_command(["umount",dir])
                     
         
-        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if f"{self.ROOT}/{self.name}/diff" in _]
+        diff_directories=[utils.split_string_by_char(_," ")[2] for _ in utils.shell_command(["mount"]).splitlines() if os.path.join(self.directory,"diff") in _]
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
@@ -77,7 +76,7 @@ class Container(utils.Class):
         for hardlink in self.hardlinks:
             os.remove(hardlink) #Remove volume hardlinks when done
         
-        utils.shell_command(["sudo","unlink","diff/etc/resolv.conf"])
+        utils.shell_command(["sudo","unlink",os.path.join("diff","etc","resolv.conf")])
         
         if self.namespaces['net']:
             utils.shell_command(["sudo","ip","netns","del",self.netns])
@@ -96,7 +95,8 @@ class Container(utils.Class):
                   
             temp=[]
             for _ in self.unionopts:
-                temp.append(f"{self.ROOT}/{_[0]}/diff={_[1]}")
+                temp.append(os.path.join(self.ROOT,name_to_filename(_[0]),diff)+"="+_[1])
+                
             self.unionopts=":".join(temp)
             
         #Prevent merged from being mounted multiple times
@@ -104,24 +104,25 @@ class Container(utils.Class):
             utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
         if not self.shell: #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
-                if os.path.islink(f"merged/bin/{shell}") or os.path.isfile(f"merged/bin/{shell}"): #Handle broken symlinks
+                if os.path.islink(os.path.join("merged","bin",shell)) or os.path.isfile(os.path.join("merged","bin",shell)): #Handle broken symlinks
                     self.Shell(f"/bin/{shell}")
                     break
                     
         #Mount dev,proc, etc. over the unionfs to deal with mmap bugs (fuse may be patched to deal with this natively so I can just mount on the diff directory, but for now, this is what is needed)
         if not self.mounted_special:
             for dir in ["dev","proc"]:
-                if not os.path.ismount(f"merged/{dir}"):
+                merged_dir=os.path.join("merged",dir)
+                if not os.path.ismount( merged_dir):
                     #Use bind mounts for special mounts, as bindfs has too many quirks (and I'm using sudo regardless)
                     if sys.platform=="darwin":
                         #MacOS doesn't have bind-mounts
                         fstype=utils.shell_command(["stat","-f","-c","%T",f"/{dir}"],stderr=subprocess.DEVNULL)
-                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype, f"merged/{dir}"])
+                        utils.shell_command(["sudo", "mount", "-t", fstype, fstype,  merged_dir])
                     elif sys.platform=="cygwin":
                         #Cygwin doesn't have rbind
-                        utils.shell_command(["mount","-o","bind",f"/{dir}",f"merged/{dir}"])
+                        utils.shell_command(["mount","-o","bind",f"/{dir}", merged_dir])
                     elif sys.platform=="linux":
-                        utils.shell_command(["sudo","mount","--rbind","--make-rprivate",f"/{dir}",f"merged/{dir}"])
+                        utils.shell_command(["sudo","mount","--rbind","--make-rprivate",f"/{dir}", merged_dir])
                    
             self.mounted_special=True
             
@@ -171,8 +172,8 @@ class Container(utils.Class):
                         pass
                 utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
             
-            os.makedirs("diff/etc",exist_ok=True)
-            utils.shell_command(["sudo","ln","-f","/etc/resolv.conf","diff/etc/resolv.conf"])
+            os.makedirs(os.path.join("diff","etc"),exist_ok=True)
+            utils.shell_command(["sudo","ln","-f", os.path.join(os.sep,"etc","resolv.conf"),os.path.join("diff","etc","resolv.conf")])
 
             os.makedirs("diff/tmp",exist_ok=True)
             os.chmod('diff/tmp',0o0777)
@@ -203,7 +204,20 @@ class Container(utils.Class):
         for command in self.run_layers_commands:
             self._exec(command,run_layer_environment) #Runnable layer's commands should be run before any other command, even though the setup is done (setup must be set to true because <command> will have self.Run, so it will spiral into an infinite loop otherwise)
             
+    def _get_config(self):
+        config=[]
+        
+        docker_layers=[]
+        docker_commands=[]
+        if os.path.isfile("docker.json"):
+            docker_layers, docker_commands=CompileDockerJson("docker.json")
             
+        config.extend(docker_layers)
+        config.append(open("container-compose.py").read())
+        config.extend(docker_commands)
+        
+        return config
+        
     def get_auxiliary_processes(self):
         if not os.path.isdir("merged"):
             return []
@@ -212,12 +226,11 @@ class Container(utils.Class):
     
     @classmethod
     def get_all_items(cls):
-        return get_all_items(cls._getroot())
+        return [filename_to_name(_) for _ in get_all_items(cls._getroot())]
     
-    convert_colon_string_to_directory=convert_colon_string_to_directory
             
     def Mount(self,IN,OUT):
-        IN=self.convert_colon_string_to_directory(IN)
+        IN=convert_colon_string_to_directory(self,IN)
         if os.path.isdir(IN):
             try:
                 os.makedirs(f"diff{OUT}",exist_ok=True)
@@ -238,16 +251,16 @@ class Container(utils.Class):
     def Copy(self,src,dest):
         #Relative directory
         if not dest.startswith("/"):
-            dest=f"diff{self.workdir}/{dest}"
+            dest=os.path.join(f"diff{self.workdir}",dest)
         
         #Absolute directory
         else:
             dest=f"diff{dest}"
         
-        src=self.convert_colon_string_to_directory(src)
+        src=convert_colon_string_to_directory(self,src)
         #Relative directory
         if not src.startswith("/"):
-            src=f"{self.SHELL_CWD}/{src}"
+            src=os.path.join(self.SHELL_CWD,src)
             
         #Remove trailing slashes, in order to prevent gotchas with cp
         if src.endswith("/"):
@@ -351,7 +364,7 @@ class Container(utils.Class):
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
-        volume_path=f"{self.ROOT}/{name[0]}/Volumes/{name[1]}"
+        volume_path=os.path.join(self.ROOT,name_to_filename(name[0]),"Volumes",name_to_filename(names[1]))
         
         self.Mount(volume_path,path)
         
@@ -401,39 +414,23 @@ class Container(utils.Class):
         command=chroot_command(self,command)
         super().Run(self,command,**kwargs)
     
-    #Commands      
-    def command_Start(self):
-        
-        docker_layers=[]
-        docker_commands=[]
-        if os.path.isfile("docker.json"):
-            docker_layers, docker_commands=CompileDockerJson("docker.json")
-            
-        self.config.extend(docker_layers)
-        self.config.append(open("container-compose.py").read())
-        self.config.extend(docker_commands)
-        
-        super().Start()
-        
+    #Commands
     def command_Build(self):
         self.Stop()
         self.fork=False #Build runs synchronously
-        
         self.namespaces['net']=False #Don't enable it when building, as it just gets messy
         
-        self._get_config=lambda *args, **kwargs: s[
-        utils.execute(self,open("Containerfile.py"))
-
+        self._get_config=lambda *args, **kwargs: [open("Containerfile.py").read()]
+        
+        self.Start()
         self.Stop()
-        remove_empty_folders_in_diff()
+        remove_empty_folders_in_diff() #A little bit of housekeeping
+        
         for layer in self.temp_layers:
-            #Clean layer if it was temporary
-            self.__class__(layer).Clean()
+            self.__class__(layer).Clean()  #Clean layer if it was temporary
             #utils.shell_command(["container","clean",layer])
-        self._exit(1,2)
         
     def command_Chroot(self):
-
         if "Stopped" in self.Status():
             stopped=True
         else:
@@ -443,67 +440,67 @@ class Container(utils.Class):
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
-#            while not self.setup:
-#                try:
-#                    self._load()
-#                except ValueError:
-#                    pass
+                
             while not hasattr(self,"netns") or not self.shell:
                 try:
                     self._load()
                 except ValueError:
                     pass
+                    
         command=self.shell #By default, run the shell
         if "run" in self.flags:
             command=self.flags["run"]  
         utils.shell_command(chroot_command(self,command),stdout=None)
-        if stopped:
+        
+        if stopped: #Return to previous state
             self.Stop()
         
         if "and-stop" in self.flags:
-            return [self.Stop()]
+            return self.Stop() 
     
     def command_Prune(self):
-        root=os.path.join(self.ROOT,self.name)
-        containers=get_all_items(root)
+        containers=get_all_items(self.directory)
         layers={'container':[],"folder":[]}
+        
         for _ in containers:
             try:
-                with open(os.path.join(root,_,"docker.json")) as f:
+                with open(os.path.join(self.directory,_,"docker.json")) as f:
                     layers['container'].extend(json.load(f)["layers"])
             except FileNotFoundError: #If docker.json doesn't exist for any container, root is not a Docker registry, and can be safely ignored
                 return
                 
-        for _ in os.listdir(root):
-            if os.listdir(os.path.join(root,_))==['diff']: #All non-container layers
-                layers['folder'].append(os.path.join(self.name,_))
+        for _ in os.listdir(self.directory):
+            if os.listdir(os.path.join(self.directory,_))==['diff']: #All non-container layers
+                layers['folder'].append(os.path.join(self.name,filename_to_name(_)))
         
         if layers['folder']==[]: #If there are no layers, then root is not a registry any can be safely ignored
             return
+            
         difference=[_ for _ in layers['folder'] if _ not in layers['container']] #Get unused layers
-        print(difference)
+        print("Layers to be deleted:",difference)
+        
         for _ in difference:
             self.__class__(_).Delete()
             
     def command_List(self):
-        return self.Class.list()
+        return self.List()
 
     def command_Init(self):
-        
         if "pull" in self.flags:
-            
             Import(self.original_name,self.ROOT)
             
             if "dockerfile" in self.flags:
-                Convert(self.flags["dockerfile"],os.path.join(self.ROOT,self.name))
-        os.makedirs(f"{self.ROOT}/{self.name}",exist_ok=True)
-        os.chdir(f"{self.ROOT}/{self.name}")
+                Convert(self.flags["dockerfile"],self.directory)
+                
+        os.makedirs(self.directory,exist_ok=True)
+        os.chdir(self.directory)
         os.makedirs("diff",exist_ok=True)
         os.makedirs("merged",exist_ok=True)
         
         if 'temp' in self.flags:
             self.flags['no-edit']=''
             self.flags['only-chroot']=''
+            
         with open(f"container-compose.py",'a'):
             pass
         
@@ -519,19 +516,19 @@ class Container(utils.Class):
 
     def command_Edit(self):
         if 'build' in self.flags:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/Containerfile.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),os.path.join(self.directory,"Containerfile.py")],stdout=None)
         else:
-            utils.shell_command([os.getenv("EDITOR","vi"),f"{self.ROOT}/{self.name}/container-compose.py"],stdout=None)
+            utils.shell_command([os.getenv("EDITOR","vi"),os.path.join(self.directory,"container-compose.py")],stdout=None)
     
     def command_Clean(self):
         self.Stop()
-        os.system(f"sudo rm -rf diff/*")
+        os.system(f"sudo rm -rf diff{os.sep}*")
     
     def command_Delete(self): #Probably move into the parent implementation
         self.Stop()
-        utils.shell_command(["sudo","rm","-rf",f"{self.ROOT}/{self.name}"])
-        parent_dir=os.path.dirname(os.path.join(self.ROOT,self.name))
+        utils.shell_command(["sudo","rm","-rf",self.directory])
         
+        parent_dir=os.path.dirname(self.directory)
         while parent_dir != self.ROOT:
             if os.path.exists(parent_dir) and len(os.listdir(parent_dir))==0:
                 os.rmdir(parent_dir)
