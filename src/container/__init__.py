@@ -288,9 +288,6 @@ class Container(utils.Class):
         self.namespaces[key]=value
         
     def Layer(self,layer,mode="RO",run=False):
-        import time
-        time.sleep(2)
-        print(layer)
         
         if [layer,mode] in self.unionopts: #Prevent multiple of the same layer
             return
@@ -326,14 +323,13 @@ class Container(utils.Class):
             parsing_environment[attr]=make_func(attr)
         
         layer=self.__class__(layer,{})
-        print(layer.name)
+
         try:
             layer._exec(layer._get_config(),parsing_environment)
         except ParsingFinished:
             pass
             
         for command in parsed_config:
-            print(getattr(self,command[0]))
             getattr(self,command[0])(*command[1],**command[2])
         
         if run: #Put the entire config in list, but only run what hasn't been parsed
