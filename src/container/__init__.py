@@ -221,7 +221,8 @@ class Container(utils.Class):
             docker_layers, docker_commands=CompileDockerJson("docker.json")
             
         config.extend(docker_layers)
-        config.append(open("container-compose.py").read())
+        if os.path.isfile("container-compose.py"):
+            config.append(open("container-compose.py").read())
         config.extend(docker_commands)
         
         return config
@@ -287,12 +288,20 @@ class Container(utils.Class):
         self.namespaces[key]=value
         
     def Layer(self,layer,mode="RO",run=False):
+        import time
+        time.sleep(2)
+        print(layer)
+        
+        if [layer,mode] in self.unionopts: #Prevent multiple of the same layer
+            return
+            
         if self.build:
             layer=self.__class__(layer,{},build=True)
             if len(os.listdir(os.path.join(self.ROOT,layer.name,"diff")))<2: #Nothing in diff, so we should build layer
                 if os.path.exists(os.path.join(self.ROOT,layer.name,"Containerfile.py")): #Only Build if there is a Containerfile.py
                     layer.Build() #Maybe just make Build a link to Start, but just using Containerfile?
                     self.temp_layers.append(layer) #Layer wasn't needed before so we can delete it after
+            layer=layer.name
         
         
         parsed_config=[]
@@ -301,27 +310,30 @@ class Container(utils.Class):
         
         #parsing_environment["parsed_config"]=parsed_config
         
-        for attr in self.attributes:
-            if not(attr[0].isupper() and callable(getattr(self,attr))):
-                continue
-            def func(attr=attr,*args,**kwargs):
+        def make_func(attr):
+            def func(*args,**kwargs):
                 if attr in ["Layer","Base","Env","Shell"]:
                     parsed_config.append([attr,args,kwargs])
                 else:
                     if attr=="Run": #No need to do anything else
                         raise ParsingFinished
                     pass
-                   
-            parsing_environment[attr]=func
+            return func
+        
+        for attr in self.attributes:
+            if not(attr[0].isupper() and callable(getattr(self,attr))):
+                continue
+            parsing_environment[attr]=make_func(attr)
         
         layer=self.__class__(layer,{})
-        
+        print(layer.name)
         try:
             layer._exec(layer._get_config(),parsing_environment)
         except ParsingFinished:
             pass
             
         for command in parsed_config:
+            print(getattr(self,command[0]))
             getattr(self,command[0])(*command[1],**command[2])
         
         if run: #Put the entire config in list, but only run what hasn't been parsed
@@ -329,8 +341,7 @@ class Container(utils.Class):
                      
         #Add method _parse that allows you to parse for specific functions?
                 
-        if [layer,mode] not in self.unionopts: #Prevent multiple of the same layers
-            self.unionopts.insert(0,[layer.name,mode])
+        self.unionopts.insert(0,[layer.name,mode])
           
     def Base(self,base):
         if self.base:
@@ -413,17 +424,17 @@ class Container(utils.Class):
     def Run(self,command="",**kwargs):
         command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
         
-        super().Run(command_wrapper,**kwargs)
+        super().Run(command_wrapper,display_command=command,**kwargs)
     
     #Commands
     
     def command_Start(self,*args,**kwargs):
-        
         super().command_Start(*args,**kwargs)
         
     def command_Build(self):
         self.Stop()
         self.fork=False #Build runs synchronously
+        self.build=True
         self.namespaces['net']=False #Don't enable it when building, as it just gets messy
         
         self._get_config=lambda *args, **kwargs: [open("Containerfile.py").read()]
