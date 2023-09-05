@@ -68,7 +68,7 @@ class Container(utils.Class):
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
-        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","-l","merged"])
+        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","merged"])
     
         
         for hardlink in self.hardlinks:
@@ -444,11 +444,11 @@ class Container(utils.Class):
             #utils.shell_command(["container","clean",layer])
 
     def command_Chroot(self):
+        
+        stopped=False
         if "Stopped" in self.Status():
             stopped=True
-        else:
-            stopped=False
-              
+             
         if stopped:
             self.Start()
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
