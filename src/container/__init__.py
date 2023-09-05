@@ -323,9 +323,9 @@ class Container(utils.Class):
             parsing_environment[attr]=make_func(attr)
         
         layer=self.__class__(layer,{})
-
+        layer_config=layer._get_config()
         try:
-            layer._exec(layer._get_config(),parsing_environment)
+            layer._exec(layer_config,parsing_environment)
         except ParsingFinished:
             pass
             
@@ -333,7 +333,7 @@ class Container(utils.Class):
             getattr(self,command[0])(*command[1],**command[2])
         
         if run: #Put the entire config in list, but only run what hasn't been parsed
-            self.run_layers_commands.append(layer.config)
+            self.run_layers_commands.append(layer_config)
                      
         #Add method _parse that allows you to parse for specific functions?
                 
@@ -379,7 +379,7 @@ class Container(utils.Class):
         #Allow to use volumes from other containers
         if len(name)==1:
             name.insert(0,self.name)
-        volume_path=os.path.join(self.ROOT,self.name_to_filename(name[0]),"Volumes",self.name_to_filename(names[1]))
+        volume_path=os.path.join(self.ROOT,utils.name_to_filename(name[0]),"Volumes",name[1])
         
         self.Mount(volume_path,path)
         
@@ -423,9 +423,6 @@ class Container(utils.Class):
         super().Run(command_wrapper,display_command=command,**kwargs)
     
     #Commands
-    
-    def command_Start(self,*args,**kwargs):
-        super().command_Start(*args,**kwargs)
         
     def command_Build(self):
         self.Stop()
@@ -462,7 +459,7 @@ class Container(utils.Class):
                     
         command=self.shell #By default, run the shell
         if "run" in self.flags:
-            command=self.flags["run"]  
+            command=self.flags["run"] 
         utils.shell_command(chroot_command(self,command),stdout=None)
         
         if stopped: #Return to previous state
@@ -484,7 +481,7 @@ class Container(utils.Class):
                 
         for _ in os.listdir(self.directory):
             if os.listdir(os.path.join(self.directory,_))==['diff']: #All non-container layers
-                layers['folder'].append(os.path.join(self.name,filename_to_name(_)))
+                layers['folder'].append(os.path.join(self.name,utils.filename_to_name(_)))
         
         if layers['folder']==[]: #If there are no layers, then root is not a registry any can be safely ignored
             return
