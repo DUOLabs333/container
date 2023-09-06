@@ -87,7 +87,7 @@ class Container(utils.Class):
                 for pid in list(map(int,[_ for _ in utils.shell_command(command).splitlines()])):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
     
-    def _setup(self):            
+    def _setup(self):          
         if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
             self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
                   
@@ -168,7 +168,7 @@ class Container(utils.Class):
                     while not os.path.exists(f"/run/netns/{self.netns}"): #Wait until net namespace is up before running anything
                         pass
                 utils.shell_command(["sudo"]+command,stdout=subprocess.DEVNULL)
-        
+
         for _from, _to in self.ports.items():
             for proto in ["tcp","udp"]:
                 if self.namespaces['net']:
@@ -412,6 +412,7 @@ class Container(utils.Class):
         if _to in self.open_ports:
             return
         
+
         if not self.namespaces['net']:
             if _from==_to:
                 return #If the source and destination are the same, don't socat it, since it will take up the port.
@@ -419,8 +420,8 @@ class Container(utils.Class):
         
     def Run(self,command="",**kwargs):
         command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
-        
-        super().Run(command_wrapper,display_command=command,**kwargs)
+
+        return super().Run(command_wrapper,display_command=command,**kwargs)
     
     #Commands
         
