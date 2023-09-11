@@ -411,17 +411,18 @@ class Container(utils.Class):
         self.ports[tuple(_from)]=_to
         
     def Run(self,command="",**kwargs):
-        if command!=-1:
-            command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
+        if self.config_finished:
+            run_layer_environment={}
+            for command in ["Layer","Base","Env","Shell"]:
+                run_layer_environment[command]=lambda *args, **kwargs : None
+                
+            for command in self.run_layers_commands:
+                self._exec(command,run_layer_environment) #Runnable layer's commands should be run after all other commands
+            self.run_layers_commands=[]
+            return
+        command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
 
-            return super().Run(command_wrapper,display_command=command,**kwargs)
-        
-        run_layer_environment={}
-        for command in ["Layer","Base","Env","Shell"]:
-            run_layer_environment[command]=lambda *args, **kwargs : None
-            
-        for command in self.run_layers_commands:
-            self._exec(command,run_layer_environment) #Runnable layer's commands should be run after all other commands
+        return super().Run(command_wrapper,display_command=command,**kwargs)
     
     #Commands
         
