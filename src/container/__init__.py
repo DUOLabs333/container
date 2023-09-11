@@ -412,6 +412,7 @@ class Container(utils.Class):
         
     def Run(self,command="",**kwargs):
         if self.config_finished:
+            self.config_finished=False #Since there's more things to run
             run_layer_environment={}
             for command in ["Layer","Base","Env","Shell"]:
                 run_layer_environment[command]=lambda *args, **kwargs : None
@@ -419,6 +420,7 @@ class Container(utils.Class):
             for command in self.run_layers_commands:
                 self._exec(command,run_layer_environment) #Runnable layer's commands should be run after all other commands
             self.run_layers_commands=[]
+            self.config_finished=True
             return
         command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
 
