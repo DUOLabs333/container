@@ -68,7 +68,7 @@ class Container(utils.Class):
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
-        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","merged"])
+        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","-l","merged"])
     
         
         for hardlink in self.hardlinks:
@@ -203,14 +203,6 @@ class Container(utils.Class):
                             break #No need to continue looping
               
         self.update_lockfile()
-        self.setup=True
-        
-        run_layer_environment={}
-        for command in ["Layer","Base","Env","Shell"]:
-            run_layer_environment[command]=lambda *args, **kwargs : None
-            
-        for command in self.run_layers_commands:
-            self._exec(command,run_layer_environment) #Runnable layer's commands should be run before any other command, even though the setup is done (setup must be set to true because <command> will have self.Run, so it will spiral into an infinite loop otherwise)
             
     def _get_config(self):
         config=[]
@@ -419,9 +411,17 @@ class Container(utils.Class):
         self.ports[tuple(_from)]=_to
         
     def Run(self,command="",**kwargs):
-        command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
+        if command!=-1:
+            command_wrapper=lambda : chroot_command(self,command) #Delay execution until setup is complete so that self.maps can be defined
 
-        return super().Run(command_wrapper,display_command=command,**kwargs)
+            return super().Run(command_wrapper,display_command=command,**kwargs)
+        
+        run_layer_environment={}
+        for command in ["Layer","Base","Env","Shell"]:
+            run_layer_environment[command]=lambda *args, **kwargs : None
+            
+        for command in self.run_layers_commands:
+            self._exec(command,run_layer_environment) #Runnable layer's commands should be run after all other commands
     
     #Commands
         
