@@ -411,6 +411,7 @@ class Container(utils.Class):
         self.ports[tuple(_from)]=_to
         
     def Run(self,command="",**kwargs):
+
         if self.config_finished:
             self.config_finished=False #Since there's more things to run
             run_layer_environment={}
