@@ -456,7 +456,7 @@ class Container(utils.Class):
             while not os.listdir("merged"): #Wait until merged directory has files before you attempt to chroot
                 pass
                 
-            while not hasattr(self,"netns") or not self.shell:
+            while not self.setup:
                 try:
                     self._load()
                 except ValueError:
