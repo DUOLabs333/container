@@ -222,7 +222,7 @@ class Container(utils.Class):
     def get_auxiliary_processes(self):
         if not os.path.isdir("merged"):
             return []
-        processes=[_ for _ in utils.shell_command(["lsof","-t","-w","--","merged"]).splitlines()]
+        processes=[_ for _ in utils.shell_command((["sudo"] if not self.namespaces["user"] else [])+["lsof","-t","-w","--","merged"]).splitlines()]
         return list(map(int,processes))
     
     @classmethod
