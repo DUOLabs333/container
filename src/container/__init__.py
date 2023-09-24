@@ -68,7 +68,7 @@ class Container(utils.Class):
         for dir in diff_directories:
              utils.shell_command(["umount","-l",dir])
              #utils.shell_command(["rm","-rf",dir])
-        utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["umount","-l","merged"])
+        utils.shell_command((['sudo'] if True else [])+["umount","-l","merged"])
     
         
         for hardlink in self.hardlinks:
@@ -99,7 +99,7 @@ class Container(utils.Class):
             
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
-            utils.shell_command((['sudo'] if self.namespaces["user"] else [])+["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+            utils.shell_command((['sudo'] if True else [])+["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
         if not self.shell: #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
                 if os.path.islink(os.path.join("merged","bin",shell)) or os.path.isfile(os.path.join("merged","bin",shell)): #Handle broken symlinks
