@@ -431,6 +431,7 @@ class Container(utils.Class):
         
     def command_Build(self):
         self.Stop()
+        self=self.__class__(self.name,self.flags) #Reset
         self.fork=False #Build runs synchronously
         self.build=True
         self.namespaces['net']=False #Don't enable it when building, as it just gets messy
