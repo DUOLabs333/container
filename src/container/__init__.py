@@ -13,6 +13,10 @@ import utils
 class ParsingFinished(Exception):
     pass
 
+def unionfs_command(opts,mountpoint):
+    
+    return ["unionfs","-o","allow_other,cow,hide_meta_files",":".join(opts),mountpoint]
+
 class Container(utils.Class):
     def __init__(self,name,flags,**kwargs):
     
@@ -88,18 +92,14 @@ class Container(utils.Class):
                     utils.kill_process_gracefully(pid) #Kill socat(s)
     
     def _setup(self):          
-        if not isinstance(self.unionopts,str): #If unionopts has not yet been joined, join it
-            self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
-                  
-            temp=[]
-            for _ in self.unionopts:
-                temp.append(os.path.join(self.ROOT,utils.name_to_filename(_[0]),"diff")+"="+_[1])
-                
-            self.unionopts=":".join(temp)
+        self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
+         
+        self.unionopts=[os.path.join(self.ROOT,utils.name_to_filename(opt[0]),"diff")+"="+opt[1] for opt in self.unionopts]
             
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
-            utils.shell_command((['sudo'] if True else [])+["unionfs","-o","allow_other,cow,hide_meta_files",self.unionopts,"merged"])
+            utils.shell_command((['sudo'] if True else [])+unionfs_command(self.unionopts,"merged"))
+            
         if not self.shell: #Only set if it doesn't exist yet
             for shell in ["bash","ash","sh"]:
                 if os.path.islink(os.path.join("merged","bin",shell)) or os.path.isfile(os.path.join("merged","bin",shell)): #Handle broken symlinks
@@ -239,7 +239,7 @@ class Container(utils.Class):
                 os.remove(f"diff{OUT}")
                 os.makedirs(f"diff{OUT}",exist_ok=True)
             if not os.path.ismount(f"diff{OUT}"):
-                utils.shell_command(["bindfs",IN,f"diff{OUT}"]) #Only use bindfs 1.15.1
+                utils.shell_command(unionfs_command([[IN,"RW"]],f"diff{OUT}"))
         else:
             os.makedirs(os.path.dirname(f"diff{OUT}"),exist_ok=True) #Make parent directory if it doesn't exist
             try:
