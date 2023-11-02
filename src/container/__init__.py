@@ -15,7 +15,7 @@ class ParsingFinished(Exception):
 
 def unionfs_command(opts,mountpoint):
     
-    return ["unionfs","-o","allow_other,cow,hide_meta_files",":".join(opts),mountpoint]
+    return ["unionfs","-o","allow_other,cow,hide_meta_files",":".join([opt[0]+"="+opt[1] for opt in opts]),mountpoint]
 
 class Container(utils.Class):
     def __init__(self,name,flags,**kwargs):
@@ -93,8 +93,9 @@ class Container(utils.Class):
     
     def _setup(self):          
         self.unionopts.insert(0,[self.name,"RW"]) #Make the current diff folder the top-most writable layer
-         
-        self.unionopts=[os.path.join(self.ROOT,utils.name_to_filename(opt[0]),"diff")+"="+opt[1] for opt in self.unionopts]
+        
+        for opt in self.unionopts:
+            opt[0]=os.path.join(self.ROOT,utils.name_to_filename(opt[0]),"diff")
             
         #Prevent merged from being mounted multiple times
         if not os.path.ismount("merged"):
