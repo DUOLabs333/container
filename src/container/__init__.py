@@ -497,7 +497,7 @@ class Container(utils.Class):
         print("Layers to be deleted:",difference)
         
         for _ in difference:
-            self.__class__(_).Delete()
+            self.__class__(_,flags={}).Delete()
 
     def command_Init(self):
         if "pull" in self.flags:
