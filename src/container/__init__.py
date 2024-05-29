@@ -145,7 +145,7 @@ class Container(utils.Class):
                     self.veth_pair['netns']['cidr']=f"{cidr[0]}.{cidr[1]}.0.2/24"
                     break
             
-            internet_interface=utils.shell_command("ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,shell=True).strip()
+            internet_interface=utils.shell_command(r"ip route get 8.8.8.8 | grep -Po '(?<=(dev ))(\S+)'",stderr=subprocess.DEVNULL,shell=True).strip()
             commands=[
                 ['ip', 'netns', 'add', self.netns],
                 ['ip', 'netns', 'exec', self.netns, 'ip', 'link', 'set', 'lo', 'up'],
