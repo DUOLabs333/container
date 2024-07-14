@@ -1,5 +1,5 @@
 import os, getpass, sys, socket
-import random, string
+import random, string, shlex
 
 import utils
 
@@ -7,15 +7,20 @@ from .docker import CompileDockerJson
 #Helper functions  
 
 def chroot_command(self,command):
+
     if self.namespaces['user']:
         result = ["unshare",f"--map-user={self.uid}",f"--map-group={self.gid}","--root=merged"]+self.maps #Unshare is available so use it
     else:
         result = ["chroot",f"--userspec={self.uid}:{self.gid}", "merged"] # Unshare does not exist, so use chroot
     if not self.shell: #No shell, so can't cd
+        if isinstance(command, str):
+            command=[command]
         if self.namespaces['user']: #Plain chroot doesn't have this option
-            result.extend([f'--wd={self.workdir}',command])
+            result.extend([f'--wd={self.workdir}']+command)
         result=['env',' '.join(self.env)]+result
     else:
+        if not isinstance(command, str):
+            command=shlex.join(command)
         result.extend([f"{self.shell}","-c",f"{utils.env_list_to_string(self.env)}; cd {self.workdir}; {command}"])
 
     if self.namespaces['net']:
