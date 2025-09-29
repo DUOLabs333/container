@@ -296,12 +296,15 @@ def CompileDockerJson(file):
             for _ in config[key]:
                 layers.append(f"""Env(\"\"\"{_}\"\"\")""")
         elif key=="WorkingDir":
-            commands.append(f"Workdir('{config[key]}')")
-        elif key=="ExposedPorts":
+            commands.append(f"Workdir('{config[key]}')") #We only need single quotes as JSON effectively quotes everything for us (maybe we need to use double-quotes instead?)
+        elif key=="ExposedPorts": #This is too dangerous to enable by default
             continue
             for _ in config[key]:
                 _=_.split("/")[0]
                 commands.append(f"Port({_},{_})")
+        elif key=="StopSignal":
+            commands.append(f"StopSignal('{config[key]}')")
+
     command=[]
     if 'Cmd' in config:
         command=config['Cmd']
